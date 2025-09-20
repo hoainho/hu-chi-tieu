@@ -1,0 +1,5 @@
+{
+  "name": "Personal Finance Dashboard",
+  "description": "A web application to manage personal finances, track income and expenses, visualize spending habits with charts, and receive suggestions for financial optimization. Data is stored in Firebase Firestore.",
+  "requestFramePermissions": []
+}
