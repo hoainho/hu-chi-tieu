@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../services/firebase';
 import { createUserProfile } from '../../services/firestoreService';
@@ -13,6 +13,17 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  // Floating particles animation
+  useEffect(() => {
+    const particles = document.querySelectorAll('.floating-particle');
+    particles.forEach((particle, index) => {
+      const delay = index * 0.5;
+      (particle as HTMLElement).style.animationDelay = `${delay}s`;
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

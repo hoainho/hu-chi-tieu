@@ -25,11 +25,20 @@ class AutoSetupService {
    * Create empty default personal account
    */
   private async createDefaultAccount(profile: UserProfile): Promise<Account> {
+    // Validate profile and preferences
+    if (!profile) {
+      throw new Error('Profile is required to create default account');
+    }
+    
+    if (!profile.preferences) {
+      console.warn('Profile missing preferences, using defaults');
+    }
+    
     const account: Omit<Account, 'id'> = {
       name: 'Tài khoản chính',
       type: 'personal',
       ownerIds: [profile.uid],
-      currency: profile.preferences.baseCurrency,
+      currency: profile.preferences?.baseCurrency || 'VND',
       balance: 0, // Start with 0 balance
       envelopes: {}, // No default envelopes
       createdAt: Timestamp.now()

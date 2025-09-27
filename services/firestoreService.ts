@@ -160,7 +160,20 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
     const userProfileRef = doc(database, 'users', userId);
     const docSnap = await getDoc(userProfileRef);
     if (docSnap.exists()) {
-      return docSnap.data() as UserProfile;
+      const profile = docSnap.data() as UserProfile;
+      
+      // Validate profile structure
+      if (!profile.preferences) {
+        console.warn('Profile missing preferences, adding defaults');
+        profile.preferences = {
+          baseCurrency: 'VND',
+          theme: 'light',
+          notifications: true,
+          language: 'vi'
+        };
+      }
+      
+      return profile;
     }
     return null;
   });

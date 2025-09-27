@@ -29,10 +29,17 @@ export const fetchUserProfile = createAsyncThunk(
         throw new Error("Không thể tải hồ sơ người dùng.");
       }
 
+      // Validate profile structure before auto-setup
+      if (!profile.preferences) {
+        console.error('Profile missing preferences:', profile);
+        throw new Error('Profile thiếu thông tin preferences');
+      }
+
       // Check if user needs auto-setup (first time login)
       const needsSetup = await autoSetupService.shouldAutoSetup(profile);
       if (needsSetup) {
         console.log('New user detected, setting up default data...');
+        console.log('Profile before setup:', profile);
         await autoSetupService.setupNewUser(profile);
         // Refetch profile after setup
         const updatedProfile = await getUserProfile(userId);
