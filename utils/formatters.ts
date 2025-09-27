@@ -1,23 +1,25 @@
 /**
  * Formats a number into a Vietnamese currency string.
- * Uses suffixes for millions (Triệu) and billions (Tỷ).
- * Formats numbers below a million with standard comma separators.
+ * Uses suffixes: K (nghìn), Tr (triệu), Tỷ (tỷ).
  * @param value The number to format.
- * @returns A formatted currency string (e.g., "1.5 Triệu", "250.000", "1.2 Tỷ").
+ * @returns A formatted currency string (e.g., "1.5Tr", "250K", "1.2Tỷ").
  */
 export const formatCurrency = (value: number): string => {
-  if (typeof value !== 'number' || isNaN(value)) {
-    return '0';
+  if (isNaN(value)) {
+    return '---';
   }
 
   const absValue = Math.abs(value);
   const sign = value < 0 ? '-' : '';
 
   if (absValue >= 1_000_000_000) {
-    return `${sign}${(absValue / 1_000_000_000).toLocaleString('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} Tỷ`;
+    return `${sign}${(absValue / 1_000_000_000).toLocaleString('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}Tỷ`;
   }
   if (absValue >= 1_000_000) {
-    return `${sign}${(absValue / 1_000_000).toLocaleString('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} Triệu`;
+    return `${sign}${(absValue / 1_000_000).toLocaleString('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}Tr`;
   }
-  return `${sign}${value.toLocaleString('vi-VN')}`;
+  if (absValue >= 1_000) {
+    return `${sign}${(absValue / 1_000).toLocaleString('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}K`;
+  }
+  return `${sign}${Math.round(absValue).toLocaleString('vi-VN')}`;
 };

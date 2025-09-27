@@ -1,17 +1,23 @@
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Provider } from 'react-redux';
+import { store } from './store';
 import Login from './components/auth/Login';
-import Dashboard from './components/dashboard/Dashboard';
 import ManagementPage from './components/management/ManagementPage';
 import AssetsPage from './components/assets/AssetsPage';
+import EnhancedAssetForm from './components/assets/EnhancedAssetForm';
+import EnhancedTransactionForm from './components/transactions/EnhancedTransactionForm';
+import EnvelopeManager from './components/envelopes/EnvelopeManager';
 import Layout from './components/layout/Layout';
 import CouplePage from './components/couple/CouplePage';
 import { AuthContext } from './context/AuthContext';
-import { UserDataProvider } from './context/UserDataContext';
+import ReduxUserProvider from './components/providers/ReduxUserProvider';
+import AuthDebugger from './components/debug/AuthDebugger';
 import { Toaster } from 'react-hot-toast';
-import { isFirebaseConfigured } from './services/firebase';
+import { isFirebaseConfigured, initializeOfflineSupport } from './services/firebase';
 import { useAuth } from './hooks/useAuth';
 import Card from './components/ui/Card';
+import ModernDashboard from './components/dashboard/ModernDashboard';
 
 const FirebaseConfigWarning: React.FC = () => (
     <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
@@ -49,43 +55,62 @@ const FirebaseConfigWarning: React.FC = () => (
 
 const App: React.FC = () => {
     const { user, loading } = useAuth();
+    
+    console.log('App - user:', user, 'loading:', loading);
 
     if (!isFirebaseConfigured()) {
         return <FirebaseConfigWarning />;
     }
     
+    // Initialize offline support when user is authenticated
+    React.useEffect(() => {
+        if (user) {
+            initializeOfflineSupport().catch(console.error);
+        }
+    }, [user]);
+    
     if (loading) {
         return (
-            <div className="flex justify-center items-center h-screen bg-slate-50">
-                <i className="fas fa-spinner fa-spin text-4xl text-blue-600"></i>
+            <div className="flex justify-center items-center h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+                    <p className="text-gray-600 text-lg">Loading your financial dashboard...</p>
+                </div>
             </div>
         );
     }
 
     return (
-        <AuthContext.Provider value={{ user, loading }}>
-            <Toaster position="top-center" reverseOrder={false} />
-            <HashRouter>
-                {!user ? (
-                    <Routes>
-                        <Route path="/login" element={<Login />} />
-                        <Route path="*" element={<Navigate to="/login" />} />
-                    </Routes>
-                ) : (
-                    <UserDataProvider>
-                        <Layout>
+        <Provider store={store}>
+            <AuthDebugger>
+                <AuthContext.Provider value={{ user, loading }}>
+                    <Toaster position="top-center" reverseOrder={false} />
+                    <HashRouter>
+                        {!user ? (
                             <Routes>
-                                <Route path="/dashboard" element={<Dashboard />} />
-                                <Route path="/manage" element={<ManagementPage />} />
-                                <Route path="/assets" element={<AssetsPage />} />
-                                <Route path="/couple" element={<CouplePage />} />
-                                <Route path="*" element={<Navigate to="/dashboard" />} />
+                                <Route path="/login" element={<Login />} />
+                                <Route path="*" element={<Navigate to="/login" />} />
                             </Routes>
-                        </Layout>
-                    </UserDataProvider>
-                )}
-            </HashRouter>
-        </AuthContext.Provider>
+                        ) : (
+                            <ReduxUserProvider>
+                                <Layout>
+                                    <Routes>
+                                        <Route path="/dashboard" element={<ModernDashboard />} />
+                                        <Route path="/manage" element={<ManagementPage />} />
+                                        <Route path="/transactions/new" element={<EnhancedTransactionForm />} />
+                                        <Route path="/assets" element={<AssetsPage />} />
+                                        <Route path="/assets/new" element={<EnhancedAssetForm />} />
+                                        <Route path="/envelopes" element={<EnvelopeManager />} />
+                                        <Route path="/couple" element={<CouplePage />} />
+                                        <Route path="*" element={<Navigate to="/dashboard" />} />
+                                    </Routes>
+                                </Layout>
+                            </ReduxUserProvider>
+                        )}
+                    </HashRouter>
+                </AuthContext.Provider>
+            </AuthDebugger>
+        </Provider>
     );
 };
 

@@ -1,11 +1,13 @@
-import React, { useState, useContext, useMemo } from 'react';
-import toast from 'react-hot-toast';
+import React, { useState, useEffect } from 'react';
+import { useAppSelector, useAppDispatch } from '../../store';
+import { fetchTransactions } from '../../store/slices/transactionSlice';
 import { Category, Transaction } from '../../types';
 import { addCategory, updateCategory, deleteCategory } from '../../services/firestoreService';
-import { UserDataContext } from '../../context/UserDataContext';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import toast from 'react-hot-toast';
+import { useMemo } from 'react';
 
 interface CategoryManagerProps {
   categories: Category[];
@@ -14,7 +16,8 @@ interface CategoryManagerProps {
 }
 
 const CategoryManager: React.FC<CategoryManagerProps> = ({ categories, transactions, onDataChange }) => {
-  const { profile } = useContext(UserDataContext);
+  const dispatch = useAppDispatch();
+  const { profile } = useAppSelector(state => state.user);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState('');

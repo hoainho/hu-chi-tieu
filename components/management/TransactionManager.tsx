@@ -1,14 +1,16 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Timestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { Transaction, Category } from '../../types';
-import { addTransaction, deleteTransaction } from '../../services/firestoreService';
-import { UserDataContext } from '../../context/UserDataContext';
+import { Transaction, Category, Account } from '../../types';
+import { useAppSelector, useAppDispatch } from '../../store';
+import { fetchAccounts } from '../../store/slices/accountSlice';
+import { createTransaction, removeTransaction } from '../../store/slices/transactionSlice';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
 import { formatCurrency } from '../../utils/formatters';
+import { formatDate } from '../../utils/dateHelpers';
 
 interface TransactionManagerProps {
   transactions: Transaction[];
@@ -17,7 +19,12 @@ interface TransactionManagerProps {
 }
 
 const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, categories, onDataChange }) => {
-  const { profile } = useContext(UserDataContext);
+  // Redux selectors
+  const dispatch = useAppDispatch();
+  const { profile } = useAppSelector(state => state.user);
+  const { accounts, loading: accountsLoading } = useAppSelector(state => state.account);
+  
+  // Local state
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState(categories.length > 0 ? categories[0].name : '');
@@ -25,6 +32,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isShared, setIsShared] = useState(false);
   const [paidBy, setPaidBy] = useState(profile?.uid || '');
+  const [selectedEnvelope, setSelectedEnvelope] = useState('');
+  
+  // Get default account (first account)
+  const defaultAccount = accounts.length > 0 ? accounts[0] : null;
 
   React.useEffect(() => {
     if (categories.length > 0 && !categories.some(c => c.name === category)) {
@@ -38,6 +49,23 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
       }
   }, [profile]);
 
+  // Load accounts using Redux
+  useEffect(() => {
+    if (profile?.uid && accounts.length === 0 && !accountsLoading) {
+      dispatch(fetchAccounts(profile.uid));
+    }
+  }, [profile?.uid, accounts.length, accountsLoading, dispatch]);
+
+  // Set first envelope when account is loaded
+  useEffect(() => {
+    if (defaultAccount && !selectedEnvelope) {
+      const envelopeNames = Object.keys(defaultAccount.envelopes || {});
+      if (envelopeNames.length > 0) {
+        setSelectedEnvelope(envelopeNames[0]);
+      }
+    }
+  }, [defaultAccount, selectedEnvelope]);
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,12 +73,30 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
         toast.error('Vui lòng điền đầy đủ thông tin và chọn một danh mục.');
         return;
     }
+    
+    if (!defaultAccount) {
+        toast.error('Không tìm thấy tài khoản. Vui lòng tạo tài khoản trước.');
+        return;
+    }
+    
+    if (!selectedEnvelope) {
+        toast.error('Vui lòng chọn ngân sách.');
+        return;
+    }
+    
     setIsSubmitting(true);
+    
+    const amountValue = parseFloat(amount);
     
     const newTransaction: Omit<Transaction, 'id'> = {
       description,
-      amount: parseFloat(amount),
+      amount: amountValue,
+      originalAmount: amountValue,
+      originalCurrency: 'VND',
+      exchangeRate: 1,
       category,
+      envelope: selectedEnvelope || '',
+      accountId: defaultAccount.id,
       date: Timestamp.fromDate(new Date(date)),
       type: isShared && profile.coupleId ? 'shared' : 'private',
       ownerId: profile.uid,
@@ -59,7 +105,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
     };
 
     try {
-      await addTransaction(newTransaction);
+      await dispatch(createTransaction(newTransaction)).unwrap();
       toast.success('Thêm chi tiêu thành công!');
       setDescription('');
       setAmount('');
@@ -67,8 +113,8 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
       setDate(new Date().toISOString().split('T')[0]);
       setIsShared(false);
       onDataChange();
-    } catch (error) {
-      toast.error('Thêm chi tiêu thất bại.');
+    } catch (error: any) {
+      toast.error(error || 'Thêm chi tiêu thất bại.');
       console.error(error);
     } finally {
         setIsSubmitting(false);
@@ -79,11 +125,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
     if (!profile) return;
     if (window.confirm('Bạn có chắc chắn muốn xóa giao dịch này không?')) {
         try {
-            await deleteTransaction(id);
-            toast.success('Đã xóa giao dịch.');
+            await dispatch(removeTransaction({ transactionId: id, userId: profile.uid })).unwrap();
+            toast.success('Xóa giao dịch thành công!');
             onDataChange();
-        } catch (error) {
-            toast.error('Xóa giao dịch thất bại.');
+        } catch (error: any) {
+            toast.error(error || 'Xóa giao dịch thất bại.');
             console.error(error);
         }
     }
@@ -108,6 +154,56 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
               {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
             </Select>
           </div>
+          
+          {defaultAccount && (() => {
+            const envelopes = defaultAccount.envelopes || {};
+            const envelopeNames = Object.keys(envelopes);
+            
+            return envelopeNames.length > 0 ? (
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Ngân sách</label>
+                <Select value={selectedEnvelope} onChange={(e) => setSelectedEnvelope(e.target.value)}>
+                  <option value="">-- Chọn ngân sách --</option>
+                  {envelopeNames.map(envName => {
+                    const envelope = envelopes[envName];
+                    const remaining = envelope.allocated - envelope.spent;
+                    return (
+                      <option key={envName} value={envName}>
+                        {envName} (Còn: {formatCurrency(remaining)})
+                      </option>
+                    );
+                  })}
+                </Select>
+                {selectedEnvelope && envelopes[selectedEnvelope] && (
+                  <div className="mt-2 text-sm text-slate-600">
+                    <div className="flex justify-between">
+                      <span>Đã phân bổ:</span>
+                      <span>{formatCurrency(envelopes[selectedEnvelope].allocated)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Đã chi:</span>
+                      <span>{formatCurrency(envelopes[selectedEnvelope].spent)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold">
+                      <span>Còn lại:</span>
+                      <span className={`${envelopes[selectedEnvelope].allocated - envelopes[selectedEnvelope].spent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(envelopes[selectedEnvelope].allocated - envelopes[selectedEnvelope].spent)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  <i className="fas fa-exclamation-triangle mr-2"></i>
+                  Chưa có ngân sách nào. 
+                  <a href="/envelopes" className="underline ml-1">Tạo ngân sách đầu tiên</a>
+                </p>
+              </div>
+            );
+          })()}
+          
            <div>
             <label className="block text-sm font-medium text-slate-700">Ngày</label>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
@@ -133,7 +229,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
                 )}
             </div>
           )}
-          <Button type="submit" disabled={isSubmitting || categories.length === 0} className="w-full">
+          <Button 
+            type="submit" 
+            disabled={isSubmitting || categories.length === 0 || !defaultAccount || !selectedEnvelope} 
+            className="w-full"
+          >
             {isSubmitting ? 'Đang thêm...' : 'Thêm chi tiêu'}
           </Button>
         </form>
@@ -154,7 +254,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
             <tbody className="bg-white divide-y divide-slate-200">
               {transactions.map(t => (
                 <tr key={t.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{t.date.toDate().toLocaleDateString()}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{formatDate(t.date)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                     <div className="flex items-center gap-2">
                       {t.type === 'shared' && <i className="fas fa-user-friends text-slate-400" title="Chi tiêu chung"></i>}

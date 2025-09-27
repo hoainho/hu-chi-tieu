@@ -1,6 +1,12 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, enableNetwork, disableNetwork } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { 
+  getFirestore, 
+  initializeFirestore,
+  enableNetwork, 
+  disableNetwork, 
+  connectFirestoreEmulator
+} from "firebase/firestore";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
 
 // Your web app's Firebase configuration
 // IMPORTANT: Replace these placeholder values with your own Firebase project's configuration
@@ -35,9 +41,25 @@ let auth;
 
 try {
   if (isFirebaseConfigured()) {
+    console.log('Initializing Firebase...');
     app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
+    console.log('Firebase app initialized');
+    
+    // Initialize Firestore with cache settings (replaces deprecated enableIndexedDbPersistence)
+    try {
+      db = initializeFirestore(app, {
+        localCache: {
+          kind: 'persistent'
+        }
+      });
+      console.log('Firestore initialized with persistent cache');
+    } catch (firestoreError) {
+      console.warn('Failed to initialize Firestore with cache, falling back to default:', firestoreError);
+      db = getFirestore(app);
+    }
+    
     auth = getAuth(app);
+    console.log('Firebase auth initialized');
     console.log('Firebase initialized successfully');
   } else {
     console.error('Firebase configuration is incomplete');
@@ -45,8 +67,50 @@ try {
   }
 } catch (error) {
   console.error('Failed to initialize Firebase:', error);
-  throw error;
+  // Don't throw error, set auth to null so app can handle it gracefully
+  auth = null;
+  db = null;
 }
+
+// Initialize offline persistence
+export const initializeOfflineSupport = async () => {
+  if (!db) {
+    console.warn('Database not initialized, skipping offline support');
+    return;
+  }
+
+  try {
+    // Use new cache settings instead of deprecated enableIndexedDbPersistence
+    // This is handled in initializeFirestore with cache settings
+    console.log('Offline persistence enabled via cache settings');
+    
+    // Handle online/offline events
+    const handleOnline = () => {
+      console.log('App came online, enabling network');
+      enableNetwork(db).catch(console.error);
+    };
+    
+    const handleOffline = () => {
+      console.log('App went offline, disabling network');
+      disableNetwork(db).catch(console.error);
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    // Initial network state
+    if (!navigator.onLine) {
+      await disableNetwork(db);
+    }
+    
+  } catch (error) {
+    console.warn('Offline persistence failed:', error);
+    // This is expected if multiple tabs are open
+    if (error instanceof Error && error.message.includes('already enabled')) {
+      console.log('Offline persistence already enabled in another tab');
+    }
+  }
+};
 
 // Network management functions
 export const enableFirestoreNetwork = async () => {
@@ -68,6 +132,27 @@ export const disableFirestoreNetwork = async () => {
     } catch (error) {
       console.error('Failed to disable Firestore network:', error);
     }
+  }
+};
+
+// Development emulator connection
+export const connectToEmulators = () => {
+  if (process.env.NODE_ENV === 'development' && !window.location.hostname.includes('localhost')) {
+    return; // Only connect to emulators in development on localhost
+  }
+  
+  try {
+    if (db && !db._delegate._databaseId.projectId.includes('demo-')) {
+      connectFirestoreEmulator(db, 'localhost', 8080);
+      console.log('Connected to Firestore emulator');
+    }
+    
+    if (auth && !auth.config.apiKey.includes('demo-')) {
+      connectAuthEmulator(auth, 'http://localhost:9099');
+      console.log('Connected to Auth emulator');
+    }
+  } catch (error) {
+    console.warn('Failed to connect to emulators:', error);
   }
 };
 

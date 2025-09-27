@@ -16,8 +16,9 @@ import {
   Firestore
 } from 'firebase/firestore';
 import db from './firebase';
-import { Transaction, IncomeSource, Category, DefaultExpenseCategories, Asset, UserProfile } from '../types';
+import { Transaction, IncomeSource, Category, Asset, UserProfile, Account } from '../types';
 import { User } from 'firebase/auth';
+import { updateEnvelopeSpending } from './accountService';
 
 // Helper function to ensure database is available
 const ensureDb = (): Firestore => {
@@ -52,6 +53,14 @@ export const createUserProfile = async (user: User, name: string) => {
       uid: user.uid,
       email: user.email!,
       name: name,
+      accountIds: [],
+      preferences: {
+        baseCurrency: 'VND',
+        theme: 'light',
+        notifications: true,
+        language: 'vi'
+      },
+      createdAt: Timestamp.now()
     };
     await setDoc(userProfileRef, userProfile);
   });
@@ -162,14 +171,63 @@ export const getTransactions = (userId: string, coupleId?: string): Promise<Tran
     return handleFirestoreOperation(() => getPersonalAndSharedData<Transaction>('transactions', userId, coupleId));
 };
 
-export const addTransaction = (transaction: Omit<Transaction, 'id'>) => {
-  const database = ensureDb();
-  return addDoc(collection(database, 'transactions'), transaction);
+export const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    
+    // Add transaction
+    const docRef = await addDoc(collection(database, 'transactions'), transaction);
+    
+    // Update envelope spending if envelope is specified
+    if (transaction.envelope && transaction.accountId) {
+      try {
+        await updateEnvelopeSpending(
+          transaction.accountId, 
+          transaction.envelope, 
+          transaction.amount, 
+          true // Add to spending
+        );
+      } catch (error) {
+        console.warn('Failed to update envelope spending:', error);
+        // Don't fail the transaction if envelope update fails
+      }
+    }
+    
+    return docRef;
+  });
 };
 
-export const deleteTransaction = (transactionId: string) => {
-  const database = ensureDb();
-  return deleteDoc(doc(database, 'transactions', transactionId));
+export const deleteTransaction = async (transactionId: string) => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    
+    // Get transaction first to update envelope
+    const transactionRef = doc(database, 'transactions', transactionId);
+    const transactionSnap = await getDoc(transactionRef);
+    
+    if (transactionSnap.exists()) {
+      const transaction = transactionSnap.data() as Transaction;
+      
+      // Delete transaction
+      await deleteDoc(transactionRef);
+      
+      // Update envelope spending (subtract the amount)
+      if (transaction.envelope && transaction.accountId) {
+        try {
+          await updateEnvelopeSpending(
+            transaction.accountId, 
+            transaction.envelope, 
+            transaction.amount, 
+            false // Subtract from spending
+          );
+        } catch (error) {
+          console.warn('Failed to update envelope spending on delete:', error);
+        }
+      }
+    } else {
+      throw new Error('Transaction not found');
+    }
+  });
 };
 
 // --- Income Sources ---
@@ -218,16 +276,7 @@ export const getCategories = async (userId: string): Promise<Category[]> => {
         const q = query(categoriesCol, where('ownerId', '==', userId));
         let categorySnapshot = await getDocs(q);
 
-        // If user has no categories, populate with defaults
-        if (categorySnapshot.empty) {
-            const batch = writeBatch(database);
-            DefaultExpenseCategories.forEach(categoryName => {
-                const newCategoryRef = doc(collection(database, 'categories'));
-                batch.set(newCategoryRef, { name: categoryName, ownerId: userId });
-            });
-            await batch.commit();
-            categorySnapshot = await getDocs(q);
-        }
+        // No default categories - user will create their own
 
         const categories = categorySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
         

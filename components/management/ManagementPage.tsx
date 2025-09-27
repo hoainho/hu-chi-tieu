@@ -1,15 +1,58 @@
-import React, { useState, useContext } from 'react';
-import { UserDataContext } from '../../context/UserDataContext';
-import TransactionManager from './TransactionManager';
-import IncomeManager from './IncomeManager';
+import React, { useState, useEffect } from 'react';
+import { useAppSelector, useAppDispatch } from '../../store';
+import { fetchTransactions } from '../../store/slices/transactionSlice';
+import { getCategories } from '../../services/firestoreService';
+import { Category } from '../../types';
+import ReduxTransactionManager from './ReduxTransactionManager';
+import ReduxIncomeManager from './ReduxIncomeManager';
 import CategoryManager from './CategoryManager';
 import Card from '../ui/Card';
 
 type Tab = 'transactions' | 'incomes' | 'categories';
 
 const ManagementPage: React.FC = () => {
+  const dispatch = useAppDispatch();
   const [activeTab, setActiveTab] = useState<Tab>('transactions');
-  const { transactions, incomes, categories, loading, refreshData, error, profile } = useContext(UserDataContext);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const { loading, error, profile } = useAppSelector(state => state.user);
+  const { transactions } = useAppSelector(state => state.transaction);
+
+  // Fetch categories function
+  const fetchCategoriesData = async () => {
+    if (!profile?.uid) return;
+    
+    setCategoriesLoading(true);
+    try {
+      const categoriesData = await getCategories(profile.uid);
+      setCategories(categoriesData);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      setCategories([]);
+    } finally {
+      setCategoriesLoading(false);
+    }
+  };
+
+  // Fetch data when component mounts or when switching to categories tab
+  useEffect(() => {
+    if (profile?.uid) {
+      if (activeTab === 'categories') {
+        fetchCategoriesData();
+      }
+      if (activeTab === 'transactions') {
+        dispatch(fetchTransactions(profile.uid));
+      }
+    }
+  }, [dispatch, profile?.uid, activeTab]);
+
+  // Function to refresh data after changes
+  const handleDataChange = () => {
+    if (profile?.uid) {
+      fetchCategoriesData();
+      dispatch(fetchTransactions(profile.uid));
+    }
+  };
 
   const getTabClass = (tabName: Tab) => 
     `px-4 py-2 font-semibold rounded-md transition-colors ${
@@ -58,9 +101,22 @@ const ManagementPage: React.FC = () => {
         </button>
       </div>
       <div>
-        {activeTab === 'transactions' && <TransactionManager transactions={transactions} categories={categories} onDataChange={refreshData} />}
-        {activeTab === 'incomes' && <IncomeManager incomes={incomes} onDataChange={refreshData} />}
-        {activeTab === 'categories' && <CategoryManager transactions={transactions} categories={categories} onDataChange={refreshData} />}
+        {activeTab === 'transactions' && <ReduxTransactionManager />}
+        {activeTab === 'incomes' && <ReduxIncomeManager />}
+        {activeTab === 'categories' && (
+          categoriesLoading ? (
+            <div className="flex justify-center items-center py-8">
+              <i className="fas fa-spinner fa-spin text-2xl text-blue-600"></i>
+              <span className="ml-2 text-gray-600">Đang tải danh mục...</span>
+            </div>
+          ) : (
+            <CategoryManager 
+              transactions={transactions} 
+              categories={categories} 
+              onDataChange={handleDataChange} 
+            />
+          )
+        )}
       </div>
     </div>
   );

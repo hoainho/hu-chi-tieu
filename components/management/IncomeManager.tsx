@@ -1,9 +1,9 @@
-import React, { useState, useContext } from 'react';
-import { Timestamp } from 'firebase/firestore';
+import React, { useState } from 'react';
+import { useAppSelector } from '../../store';
 import toast from 'react-hot-toast';
 import { IncomeSource } from '../../types';
 import { addIncome, deleteIncome } from '../../services/firestoreService';
-import { UserDataContext } from '../../context/UserDataContext';
+import { Timestamp } from 'firebase/firestore';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -15,7 +15,7 @@ interface IncomeManagerProps {
 }
 
 const IncomeManager: React.FC<IncomeManagerProps> = ({ incomes, onDataChange }) => {
-  const { profile } = useContext(UserDataContext);
+  const { profile } = useAppSelector(state => state.user);
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);

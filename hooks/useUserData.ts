@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
-import { Transaction, IncomeSource, Category, Asset, UserProfile } from '../types';
+import { Transaction, IncomeSource, Category, Asset, UserProfile, Account } from '../types';
 import { getTransactions, getIncomes, getCategories, getAssets, getUserProfile } from '../services/firestoreService';
+import { getAccountsByUser } from '../services/accountService';
 import { AuthContext } from '../context/AuthContext';
+import autoSetupService from '../services/autoSetupService';
 import toast from 'react-hot-toast';
 
 export const useUserData = () => {
@@ -11,6 +13,7 @@ export const useUserData = () => {
   const [incomes, setIncomes] = useState<IncomeSource[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -25,6 +28,7 @@ export const useUserData = () => {
       setIncomes([]);
       setCategories([]);
       setAssets([]);
+      setAccounts([]);
       return;
     }
 
@@ -39,18 +43,35 @@ export const useUserData = () => {
           throw new Error("Không thể tải hồ sơ người dùng.");
       }
 
-      // 2. Fetch all other data based on profile
-      const [transactionsData, incomesData, categoriesData, assetsData] = await Promise.all([
+      // 2. Check if user needs auto-setup (first time login)
+      const needsSetup = await autoSetupService.shouldAutoSetup(userProfile);
+      if (needsSetup) {
+        console.log('New user detected, setting up default data...');
+        toast.loading('Đang thiết lập tài khoản lần đầu...', { id: 'setup' });
+        
+        try {
+          await autoSetupService.setupNewUser(userProfile);
+          toast.success('Tài khoản đã được thiết lập thành công!', { id: 'setup' });
+        } catch (setupError) {
+          console.error('Auto-setup failed:', setupError);
+          toast.error('Không thể thiết lập tài khoản tự động', { id: 'setup' });
+        }
+      }
+
+      // 3. Fetch all other data based on profile
+      const [transactionsData, incomesData, categoriesData, assetsData, accountsData] = await Promise.all([
         getTransactions(userId, userProfile.coupleId),
         getIncomes(userId, userProfile.coupleId),
         getCategories(userId),
         getAssets(userId, userProfile.coupleId),
+        getAccountsByUser(userId),
       ]);
 
       setTransactions(transactionsData);
       setIncomes(incomesData);
       setCategories(categoriesData);
       setAssets(assetsData);
+      setAccounts(accountsData);
 
     } catch (err: any) {
       console.error(err);
@@ -71,5 +92,71 @@ export const useUserData = () => {
     fetchData();
   }, [fetchData]);
 
-  return { profile, transactions, incomes, categories, assets, loading, error, refreshData: fetchData };
+  // Individual refresh functions
+  const refreshAssets = useCallback(async () => {
+    if (!userId || !profile) return;
+    try {
+      const assetsData = await getAssets(userId, profile.coupleId);
+      setAssets(assetsData);
+    } catch (err) {
+      console.error('Failed to refresh assets:', err);
+    }
+  }, [userId, profile]);
+
+  const refreshTransactions = useCallback(async () => {
+    if (!userId || !profile) return;
+    try {
+      const transactionsData = await getTransactions(userId, profile.coupleId);
+      setTransactions(transactionsData);
+    } catch (err) {
+      console.error('Failed to refresh transactions:', err);
+    }
+  }, [userId, profile]);
+
+  const refreshIncomes = useCallback(async () => {
+    if (!userId || !profile) return;
+    try {
+      const incomesData = await getIncomes(userId, profile.coupleId);
+      setIncomes(incomesData);
+    } catch (err) {
+      console.error('Failed to refresh incomes:', err);
+    }
+  }, [userId, profile]);
+
+  const refreshCategories = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const categoriesData = await getCategories(userId);
+      setCategories(categoriesData);
+    } catch (err) {
+      console.error('Failed to refresh categories:', err);
+    }
+  }, [userId]);
+
+  const refreshAccounts = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const accountsData = await getAccountsByUser(userId);
+      setAccounts(accountsData);
+    } catch (err) {
+      console.error('Failed to refresh accounts:', err);
+    }
+  }, [userId]);
+
+  return { 
+    profile, 
+    transactions, 
+    incomes, 
+    categories, 
+    assets, 
+    accounts, 
+    loading, 
+    error, 
+    refreshData: fetchData,
+    refreshAssets,
+    refreshTransactions,
+    refreshIncomes,
+    refreshCategories,
+    refreshAccounts
+  };
 };

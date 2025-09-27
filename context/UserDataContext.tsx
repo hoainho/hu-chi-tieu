@@ -1,5 +1,5 @@
 import React, { createContext, ReactNode } from 'react';
-import { Transaction, IncomeSource, Category, Asset, UserProfile } from '../types';
+import { Transaction, IncomeSource, Category, Asset, UserProfile, Account } from '../types';
 import { useUserData } from '../hooks/useUserData';
 
 interface UserDataContextType {
@@ -8,9 +8,15 @@ interface UserDataContextType {
   incomes: IncomeSource[];
   categories: Category[];
   assets: Asset[];
+  accounts: Account[];
   loading: boolean;
   error: string | null;
   refreshData: () => void;
+  refreshAssets: () => void;
+  refreshTransactions: () => void;
+  refreshIncomes: () => void;
+  refreshCategories: () => void;
+  refreshAccounts: () => void;
 }
 
 export const UserDataContext = createContext<UserDataContextType>({
@@ -19,9 +25,15 @@ export const UserDataContext = createContext<UserDataContextType>({
   incomes: [],
   categories: [],
   assets: [],
+  accounts: [],
   loading: true,
   error: null,
   refreshData: () => {},
+  refreshAssets: () => {},
+  refreshTransactions: () => {},
+  refreshIncomes: () => {},
+  refreshCategories: () => {},
+  refreshAccounts: () => {},
 });
 
 interface UserDataProviderProps {

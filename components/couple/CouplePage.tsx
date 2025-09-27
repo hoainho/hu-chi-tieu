@@ -1,13 +1,12 @@
-import React, { useContext, useState, useEffect } from 'react';
-import toast from 'react-hot-toast';
-import { UserDataContext } from '../../context/UserDataContext';
+import React, { useState, useEffect } from 'react';
+import { useAppSelector } from '../../store';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import { createInvite, getInvite, acceptInvite } from '../../services/firestoreService';
 
 const CouplePage: React.FC = () => {
-  const { profile, refreshData } = useContext(UserDataContext);
+  const { profile } = useAppSelector(state => state.user);
   const [inviteCode, setInviteCode] = useState('');
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
