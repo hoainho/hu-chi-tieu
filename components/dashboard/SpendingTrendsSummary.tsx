@@ -127,7 +127,7 @@ const SpendingTrendsSummary: React.FC = () => {
 
 
       {/* Quick Insight */}
-      <div className={`text-center text-xs px-3 py-2 rounded-full ${
+      <div className={`text-center text-xs px-3 py-2 mt-2 rounded-full ${
         quickAnalysis.monthlyChange > 15 ? 'bg-red-100 text-red-700' :
         quickAnalysis.monthlyChange < -15 ? 'bg-green-100 text-green-700' :
         'bg-blue-100 text-blue-700'

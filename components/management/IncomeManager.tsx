@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
-import { useAppSelector } from '../../store';
+import React, { useState, useEffect } from 'react';
+import { useAppSelector, useAppDispatch } from '../../store';
 import toast from 'react-hot-toast';
 import { IncomeSource } from '../../types';
 import { addIncome, deleteIncome } from '../../services/firestoreService';
 import { Timestamp } from 'firebase/firestore';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
+import Select from '../ui/Select';
 import Button from '../ui/Button';
 import { formatCurrency } from '../../utils/formatters';
+import { fetchSpendingSources, updateBalance } from '../../store/slices/spendingSourceSlice';
+import { addIncomeToBalance } from '../../store/slices/availableBalanceSlice';
 
 interface IncomeManagerProps {
   incomes: IncomeSource[];
@@ -15,37 +18,78 @@ interface IncomeManagerProps {
 }
 
 const IncomeManager: React.FC<IncomeManagerProps> = ({ incomes, onDataChange }) => {
+  const dispatch = useAppDispatch();
   const { profile } = useAppSelector(state => state.user);
+  const { spendingSources } = useAppSelector(state => state.spendingSource);
+  
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isShared, setIsShared] = useState(false);
+  const [selectedSpendingSource, setSelectedSpendingSource] = useState('');
+
+  // Load spending sources
+  useEffect(() => {
+    if (profile?.uid) {
+      dispatch(fetchSpendingSources(profile.uid));
+    }
+  }, [profile?.uid, dispatch]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile || !name || !amount || !date) return;
+    if (!profile || !name || !amount || !date) {
+      toast.error('Vui lòng điền đầy đủ thông tin.');
+      return;
+    }
+    
+    if (!selectedSpendingSource) {
+      toast.error('Vui lòng chọn nguồn để nạp tiền vào.');
+      return;
+    }
 
     setIsSubmitting(true);
+    const amountValue = parseFloat(amount);
+    
     const newIncome: Omit<IncomeSource, 'id'> = {
       name,
-      amount: parseFloat(amount),
+      amount: amountValue,
       date: Timestamp.fromDate(new Date(date)),
       type: isShared && profile.coupleId ? 'shared' : 'private',
       ownerId: profile.uid,
+      spendingSourceId: selectedSpendingSource,
       ...(isShared && profile.coupleId && { coupleId: profile.coupleId }),
     };
 
     try {
-      await addIncome(newIncome);
-      toast.success('Thêm nguồn thu nhập thành công!');
+      const incomeResult = await addIncome(newIncome);
+      
+      // Update spending source balance
+      await dispatch(updateBalance({
+        spendingSourceId: selectedSpendingSource,
+        amount: amountValue,
+        operation: 'add',
+        description: `Thu nhập: ${name}`
+      }));
+      
+      // Update available balance
+      await dispatch(addIncomeToBalance({
+        userId: profile.uid,
+        amount: amountValue,
+        description: `Thu nhập: ${name}`,
+        sourceId: incomeResult?.id || `income-${Date.now()}`,
+        coupleId: profile.coupleId
+      }));
+      
+      toast.success('Thêm thu nhập và cập nhật số dư thành công!');
       setName('');
       setAmount('');
       setDate(new Date().toISOString().split('T')[0]);
       setIsShared(false);
+      setSelectedSpendingSource('');
       onDataChange();
     } catch (error) {
-      toast.error('Thêm nguồn thu nhập thất bại.');
+      toast.error('Thêm thu nhập thất bại.');
       console.error(error);
     } finally {
         setIsSubmitting(false);
@@ -79,6 +123,28 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ incomes, onDataChange }) 
             <label className="block text-sm font-medium text-slate-700">Số tiền (VND)</label>
             <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required min="1" step="1" />
           </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Nạp vào nguồn <span className="text-red-500">*</span></label>
+            <Select value={selectedSpendingSource} onChange={(e) => setSelectedSpendingSource(e.target.value)} required>
+              <option value="">— Chọn nguồn để nạp tiền —</option>
+              {spendingSources.map(source => (
+                <option key={source.id} value={source.id}>
+                  {source.name} ({formatCurrency(source.balance)})
+                </option>
+              ))}
+            </Select>
+            {spendingSources.length === 0 && (
+              <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  <i className="fas fa-exclamation-triangle mr-2"></i>
+                  Chưa có nguồn chi tiêu nào. 
+                  <a href="/spending-sources" className="underline ml-1">Tạo nguồn đầu tiên</a>
+                </p>
+              </div>
+            )}
+          </div>
+          
            <div>
             <label className="block text-sm font-medium text-slate-700">Ngày nhận</label>
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
@@ -95,7 +161,7 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ incomes, onDataChange }) 
             </div>
           )}
 
-          <Button type="submit" disabled={isSubmitting} className="w-full">
+          <Button type="submit" disabled={isSubmitting || spendingSources.length === 0} className="w-full">
             {isSubmitting ? 'Đang thêm...' : 'Thêm thu nhập'}
           </Button>
         </form>

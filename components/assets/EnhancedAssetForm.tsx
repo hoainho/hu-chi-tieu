@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useAppSelector } from '../../store';
+import { useEffect } from 'react';
+import { getIncomes } from '../../services/firestoreService';
 import toast from 'react-hot-toast';
 import { Asset, AssetType } from '../../types';
-import { addAsset } from '../../services/firestoreService';
+import { addAsset, addTransaction } from '../../services/firestoreService';
 import { Timestamp } from 'firebase/firestore';
 import marketDataService from '../../services/marketDataService';
 import ModernCard from '../ui/ModernCard';
@@ -31,12 +33,30 @@ const EnhancedAssetForm: React.FC = () => {
     sector: '',
     description: '',
     isShared: false,
-    date: new Date().toISOString().split('T')[0]
+    date: new Date().toISOString().split('T')[0],
+    incomeSource: '' // New field for income source
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [marketPreview, setMarketPreview] = useState<any>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [availableIncomes, setAvailableIncomes] = useState<any[]>([]);
+
+  // Fetch available incomes for investment source selection
+  useEffect(() => {
+    const fetchIncomes = async () => {
+      if (profile?.uid) {
+        try {
+          const incomes = await getIncomes(profile.uid, profile.coupleId);
+          setAvailableIncomes(incomes);
+        } catch (error) {
+          console.error('Failed to fetch incomes:', error);
+        }
+      }
+    };
+    
+    fetchIncomes();
+  }, [profile?.uid, profile?.coupleId]);
 
   // Asset type configurations
   const assetTypeConfig = {
@@ -141,9 +161,13 @@ const EnhancedAssetForm: React.FC = () => {
     const requiredFields = config.fields;
 
     // Check required fields based on asset type
-    if (formData.type === 'stock' || formData.type === 'crypto') {
+    if (formData.type === 'stock' || formData.type === 'crypto' || formData.type === 'gold') {
       if (!formData.symbol || !formData.quantity || !formData.purchasePrice) {
         toast.error('Please fill in symbol, quantity, and purchase price for investments');
+        return;
+      }
+      if (!formData.incomeSource) {
+        toast.error('Please select an income source for this investment');
         return;
       }
     } else if (!formData.value) {
@@ -178,7 +202,33 @@ const EnhancedAssetForm: React.FC = () => {
       };
 
       await addAsset(asset);
-      toast.success('Asset added successfully!');
+      
+      // Create corresponding transaction for investment assets
+      if (['stock', 'crypto', 'gold'].includes(formData.type)) {
+        const investmentAmount = Math.abs(value);
+        const investmentTransaction = {
+          amount: -investmentAmount, // Negative for expense
+          originalAmount: investmentAmount,
+          originalCurrency: 'VND' as const,
+          exchangeRate: 1,
+          category: 'investment',
+          envelope: 'default', // Default envelope
+          accountId: 'default', // Default account
+          description: `Đầu tư ${formData.type}: ${formData.name}${formData.symbol ? ` (${formData.symbol})` : ''}${formData.incomeSource ? ` - Từ: ${availableIncomes.find(i => i.id === formData.incomeSource)?.source || 'N/A'}` : ''}`,
+          date: Timestamp.fromDate(new Date(formData.date)),
+          type: (formData.isShared && profile.coupleId ? 'shared' : 'private') as 'private' | 'shared',
+          ownerId: profile.uid,
+          ...(formData.isShared && profile.coupleId && { 
+            coupleId: profile.coupleId,
+            paidBy: profile.uid,
+            isShared: true
+          })
+        };
+        
+        await addTransaction(investmentTransaction);
+      }
+      
+      toast.success(`${['stock', 'crypto', 'gold'].includes(formData.type) ? 'Investment and transaction' : 'Asset'} added successfully!`);
       
       // Reset form
       setFormData({
@@ -192,7 +242,8 @@ const EnhancedAssetForm: React.FC = () => {
         sector: '',
         description: '',
         isShared: false,
-        date: new Date().toISOString().split('T')[0]
+        date: new Date().toISOString().split('T')[0],
+        incomeSource: ''
       });
       setMarketPreview(null);
       
@@ -373,6 +424,30 @@ const EnhancedAssetForm: React.FC = () => {
                         </div>
                       </div>
                     )}
+
+                    {/* Income Source Selection for Investments */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <i className="fas fa-wallet mr-2 text-green-600"></i>
+                        Nguồn chi tiêu (từ thu nhập nào?)
+                      </label>
+                      <Select
+                        value={formData.incomeSource}
+                        onChange={(e) => setFormData(prev => ({ ...prev, incomeSource: e.target.value }))}
+                        className="w-full"
+                      >
+                        <option value="">Chọn nguồn thu nhập...</option>
+                        {availableIncomes.map(income => (
+                          <option key={income.id} value={income.id}>
+                            {income.source} - {income.amount.toLocaleString()} VND
+                            {income.frequency && ` (${income.frequency})`}
+                          </option>
+                        ))}
+                      </Select>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Khoản đầu tư sẽ được trừ từ nguồn thu nhập này
+                      </div>
+                    </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Exchange</label>

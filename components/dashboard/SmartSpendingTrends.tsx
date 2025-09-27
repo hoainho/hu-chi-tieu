@@ -324,9 +324,8 @@ const SmartSpendingTrends: React.FC = () => {
         </div>
       </div>
 
-      {/* Phân tích theo danh mục và thói quen */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top danh mục chi tiêu */}
+      {/* Category spending analysis */}
+        {/* Top category spending */}
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h4 className="font-semibold text-gray-800 mb-4">Top danh mục chi tiêu</h4>
           <ResponsiveContainer width="100%" height={250}>
@@ -354,7 +353,7 @@ const SmartSpendingTrends: React.FC = () => {
           </div>
         </div>
 
-        {/* Thói quen chi tiêu theo ngày */}
+        {/* Weekday spending trends */}
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h4 className="font-semibold text-gray-800 mb-4">Thói quen theo ngày trong tuần</h4>
           <ResponsiveContainer width="100%" height={250}>
@@ -377,7 +376,6 @@ const SmartSpendingTrends: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
 
       {/* AI Insights */}
       <div className="bg-white rounded-xl shadow-lg p-6">

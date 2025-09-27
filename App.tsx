@@ -1,13 +1,16 @@
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import './styles/animations.css';
 import { Provider } from 'react-redux';
 import { store } from './store';
 import Login from './components/auth/Login';
 import ManagementPage from './components/management/ManagementPage';
 import AssetsPage from './components/assets/AssetsPage';
 import EnhancedAssetForm from './components/assets/EnhancedAssetForm';
+import InvestmentPage from './components/assets/InvestmentPage';
 import EnhancedTransactionForm from './components/transactions/EnhancedTransactionForm';
 import EnvelopeManager from './components/envelopes/EnvelopeManager';
+import SpendingSourceManager from './components/management/SpendingSourceManager';
 import Layout from './components/layout/Layout';
 import CouplePage from './components/couple/CouplePage';
 import { AuthContext } from './context/AuthContext';
@@ -100,7 +103,9 @@ const App: React.FC = () => {
                                         <Route path="/transactions/new" element={<EnhancedTransactionForm />} />
                                         <Route path="/assets" element={<AssetsPage />} />
                                         <Route path="/assets/new" element={<EnhancedAssetForm />} />
+                                        <Route path="/investments" element={<InvestmentPage />} />
                                         <Route path="/envelopes" element={<EnvelopeManager />} />
+                                        <Route path="/spending-sources" element={<SpendingSourceManager />} />
                                         <Route path="/couple" element={<CouplePage />} />
                                         <Route path="*" element={<Navigate to="/dashboard" />} />
                                     </Routes>

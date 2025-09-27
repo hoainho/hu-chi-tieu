@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppSelector, useAppDispatch } from '../../store';
+import { fetchCurrentBalance } from '../../store/slices/availableBalanceSlice';
 import { fetchUserProfile } from '../../store/slices/userSlice';
 import { fetchAccounts } from '../../store/slices/accountSlice';
 import { fetchTransactions } from '../../store/slices/transactionSlice';
@@ -46,8 +47,6 @@ import {
 } from 'recharts';
 
 const ModernDashboard: React.FC = () => {
-  const dispatch = useAppDispatch();
-  
   // Helper functions for stock and crypto names
   const getStockName = (symbol: string): string => {
     const stockNames: Record<string, string> = {
@@ -66,18 +65,20 @@ const ModernDashboard: React.FC = () => {
     };
     return cryptoNames[symbol] || symbol;
   };
+  const dispatch = useAppDispatch();
   
   // Redux selectors
   const { profile, loading: userLoading, error: userError } = useAppSelector(state => state.user);
   const { accounts, loading: accountsLoading } = useAppSelector(state => state.account);
   const { transactions, loading: transactionsLoading } = useAppSelector(state => state.transaction);
-  
-  // Get assets from useAssets hook
-  const { assets, getInvestmentAssets, getPortfolioSummary } = useAssets();
+  const { incomes } = useAppSelector(state => state.income);
+  const { currentBalance: availableBalance, loading: balanceLoading } = useAppSelector(state => state.availableBalance);
+  const { assets } = useAssets();
   
   // Investment tracking state
   const [vietnamStocks, setVietnamStocks] = useState<any[]>([]);
   const [cryptoPrices, setCryptoPrices] = useState<any[]>([]);
+  const { assets: assetsWithInvestment, getInvestmentAssets, getPortfolioSummary } = useAssets();
   const [goldPrices, setGoldPrices] = useState<any[]>([]);
   const [lastPriceUpdate, setLastPriceUpdate] = useState<Date | null>(null);
   
@@ -96,8 +97,9 @@ const ModernDashboard: React.FC = () => {
       dispatch(fetchAccounts(profile.uid));
       dispatch(fetchTransactions(profile.uid));
       dispatch(fetchIncomes(profile.uid));
+      dispatch(fetchCurrentBalance({ userId: profile.uid, coupleId: profile.coupleId }));
     }
-  }, [profile?.uid, dispatch]);
+  }, [profile?.uid, profile?.coupleId, dispatch]);
 
   // Load Vietnam stock prices
   const loadVietnamStocks = async () => {
@@ -276,8 +278,33 @@ const ModernDashboard: React.FC = () => {
   const dashboardMetrics = useMemo(() => {
     if (!accounts.length) return null;
 
-    // Combine all account data
-    const totalBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
+    // Calculate total income
+    const totalIncome = incomes.reduce((sum, income) => sum + income.amount, 0);
+    
+    // Calculate total spending (negative transactions, EXCLUDING investment transactions)
+    const totalSpending = transactions
+      .filter(txn => txn.amount < 0 && txn.category !== 'investment')
+      .reduce((sum, txn) => sum + Math.abs(txn.amount), 0);
+    
+    // Calculate total investment spending (from investment transactions)
+    const totalInvestmentSpending = transactions
+      .filter(txn => txn.amount < 0 && txn.category === 'investment')
+      .reduce((sum, txn) => sum + Math.abs(txn.amount), 0);
+    
+    // Calculate current investment value (from assets)
+    const totalInvestmentValue = assets.reduce((sum, asset) => {
+      if (['crypto', 'stock', 'gold'].includes(asset.type)) {
+        return sum + (asset.marketValue || asset.value);
+      }
+      return sum;
+    }, 0);
+    
+    // Available balance = Income - Regular Spending - Investment Spending
+    // This represents "free money" not yet spent or invested
+    const availableBalance = totalIncome - totalSpending - totalInvestmentSpending;
+
+    // Account balance (for reference)
+    const accountBalance = accounts.reduce((sum, account) => sum + account.balance, 0);
     
     // Calculate total budget across all accounts
     const allEnvelopes = accounts.reduce((acc, account) => {
@@ -314,7 +341,12 @@ const ModernDashboard: React.FC = () => {
     }, 0);
 
     return {
-      totalBalance,
+      totalBalance: availableBalance, // Available balance from Redux store (accumulated balance)
+      accountBalance, // Actual account balance
+      totalIncome,
+      totalSpending, // Regular spending only
+      totalInvestmentSpending, // Investment spending
+      totalInvestmentValue, // Current investment value
       budgetSummary,
       monthlySpending,
       totalAssetValue,
@@ -322,7 +354,7 @@ const ModernDashboard: React.FC = () => {
       accountCount: accounts.length,
       assetCount: assets.length
     };
-  }, [accounts, transactions, assets, marketData]);
+  }, [accounts, transactions, assets, incomes, availableBalance, marketData]);
 
   // Convert amounts to selected currency
   const convertAmount = (vndAmount: number) => {
@@ -598,7 +630,7 @@ const ModernDashboard: React.FC = () => {
                   formatter={(val) => formatCurrency(val)}
                 />
               </div>
-              <div className="text-sm text-gray-600">Tổng số dư</div>
+              <div className="text-sm text-gray-600">Số dư khả dụng</div>
             </div>
           </ModernCard>
 

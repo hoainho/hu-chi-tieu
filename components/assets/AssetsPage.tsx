@@ -23,6 +23,9 @@ const AssetsPage: React.FC = () => {
   const [type, setType] = useState<AssetType>('savings');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isShared, setIsShared] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
 
   // Check if current type is a market asset
   const isMarketAssetType = ['stock', 'crypto', 'gold'].includes(type);
@@ -94,7 +97,8 @@ const AssetsPage: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (!profile) return;
-    if (window.confirm('Bạn có chắc chắn muốn xóa tài sản này không?')) {
+    const asset = assets.find(a => a.id === id);
+    if (window.confirm(`Bạn có chắc chắn muốn xóa tài sản "${asset?.name}" không?`)) {
         try {
             await deleteAsset(id);
             toast.success('Đã xóa tài sản.');
@@ -103,6 +107,114 @@ const AssetsPage: React.FC = () => {
             toast.error('Xóa tài sản thất bại.');
             console.error(error);
         }
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!profile || selectedAssets.length === 0) return;
+    if (window.confirm(`Bạn có chắc chắn muốn xóa ${selectedAssets.length} tài sản đã chọn không?`)) {
+      try {
+        await Promise.all(selectedAssets.map(id => deleteAsset(id)));
+        toast.success(`Đã xóa ${selectedAssets.length} tài sản.`);
+        setSelectedAssets([]);
+        await refreshAssets();
+      } catch (error) {
+        toast.error('Xóa tài sản thất bại.');
+        console.error(error);
+      }
+    }
+  };
+
+  const findDuplicateAssets = () => {
+    const duplicates: { [key: string]: Asset[] } = {};
+    
+    assets.forEach(asset => {
+      // Group by name and type (and symbol for market assets)
+      let key = `${asset.name.toLowerCase()}-${asset.type}`;
+      if (isMarketAsset(asset) && asset.symbol) {
+        key += `-${asset.symbol.toLowerCase()}`;
+      }
+      
+      if (!duplicates[key]) {
+        duplicates[key] = [];
+      }
+      duplicates[key].push(asset);
+    });
+    
+    // Return only groups with more than 1 asset
+    return Object.values(duplicates).filter(group => group.length > 1);
+  };
+
+  const handleMergeAssets = async (assetsToMerge: Asset[]) => {
+    if (!profile || assetsToMerge.length < 2) return;
+    
+    try {
+      const firstAsset = assetsToMerge[0];
+      const restAssets = assetsToMerge.slice(1);
+      
+      let mergedData: any = { ...firstAsset };
+      
+      if (isMarketAsset(firstAsset)) {
+        // For market assets, sum quantities and average purchase prices
+        const totalQuantity = assetsToMerge.reduce((sum, asset) => {
+          return sum + (isMarketAsset(asset) ? asset.quantity : 0);
+        }, 0);
+        
+        const weightedPriceSum = assetsToMerge.reduce((sum, asset) => {
+          if (isMarketAsset(asset)) {
+            return sum + (asset.quantity * asset.purchasePrice);
+          }
+          return sum;
+        }, 0);
+        
+        const avgPurchasePrice = weightedPriceSum / totalQuantity;
+        
+        mergedData = {
+          ...mergedData,
+          quantity: totalQuantity,
+          purchasePrice: avgPurchasePrice,
+          date: Timestamp.now()
+        };
+      } else {
+        // For fixed value assets, sum values
+        const totalValue = assetsToMerge.reduce((sum, asset) => {
+          return sum + getAssetValue(asset);
+        }, 0);
+        
+        mergedData = {
+          ...mergedData,
+          value: totalValue,
+          date: Timestamp.now()
+        };
+      }
+      
+      // Update the first asset with merged data
+      await updateAsset(firstAsset.id, mergedData);
+      
+      // Delete the rest
+      await Promise.all(restAssets.map(asset => deleteAsset(asset.id)));
+      
+      toast.success(`Đã gộp ${assetsToMerge.length} tài sản thành công!`);
+      await refreshAssets();
+    } catch (error) {
+      toast.error('Gộp tài sản thất bại.');
+      console.error(error);
+    }
+  };
+
+  const toggleAssetSelection = (assetId: string) => {
+    setSelectedAssets(prev => 
+      prev.includes(assetId) 
+        ? prev.filter(id => id !== assetId)
+        : [...prev, assetId]
+    );
+  };
+
+  const selectAllAssets = () => {
+    if (selectedAssets.length === assets.length) {
+      setSelectedAssets([]);
+    } else {
+      setSelectedAssets(assets.map(a => a.id));
     }
   };
   
@@ -292,11 +404,43 @@ const AssetsPage: React.FC = () => {
             </form>
         </Card>
         <Card className="lg:col-span-2">
-            <h2 className="text-lg font-semibold mb-4">Danh sách tài sản</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold">Danh sách tài sản</h2>
+              <div className="flex space-x-2">
+                {findDuplicateAssets().length > 0 && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => setShowMergeModal(true)}
+                    className="text-sm"
+                  >
+                    <i className="fas fa-compress-arrows-alt mr-2"></i>
+                    Gộp trùng ({findDuplicateAssets().length})
+                  </Button>
+                )}
+                {selectedAssets.length > 0 && (
+                  <Button
+                    variant="secondary"
+                    onClick={handleBulkDelete}
+                    className="text-sm bg-red-100 text-red-800 hover:bg-red-200"
+                  >
+                    <i className="fas fa-trash mr-2"></i>
+                    Xóa ({selectedAssets.length})
+                  </Button>
+                )}
+              </div>
+            </div>
             <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-slate-50">
                 <tr>
+                    <th className="px-4 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={selectedAssets.length === assets.length && assets.length > 0}
+                        onChange={selectAllAssets}
+                        className="rounded border-gray-300"
+                      />
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Tên</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Loại</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Số lượng</th>
@@ -307,7 +451,15 @@ const AssetsPage: React.FC = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-200">
                 {assets.map(a => (
-                    <tr key={a.id}>
+                    <tr key={a.id} className={selectedAssets.includes(a.id) ? 'bg-blue-50' : ''}>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={selectedAssets.includes(a.id)}
+                        onChange={() => toggleAssetSelection(a.id)}
+                        className="rounded border-gray-300"
+                      />
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                         <div className="flex items-center gap-2">
                             {a.ownerType === 'shared' && <i className="fas fa-user-friends text-slate-400" title="Tài sản chung"></i>}
@@ -379,7 +531,7 @@ const AssetsPage: React.FC = () => {
                 ))}
                 {assets.length === 0 && (
                     <tr>
-                    <td colSpan={5} className="text-center py-4 text-slate-500">Chưa có tài sản nào được ghi lại.</td>
+                    <td colSpan={7} className="text-center py-4 text-slate-500">Chưa có tài sản nào được ghi lại.</td>
                     </tr>
                 )}
                 </tbody>
@@ -387,6 +539,119 @@ const AssetsPage: React.FC = () => {
             </div>
         </Card>
         </div>
+        
+        {/* Merge Duplicates Modal */}
+        {showMergeModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Gộp tài sản trùng lặp</h3>
+                <button
+                  onClick={() => setShowMergeModal(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+              
+              <div className="space-y-6">
+                {findDuplicateAssets().map((duplicateGroup, groupIndex) => {
+                  const firstAsset = duplicateGroup[0];
+                  const totalValue = duplicateGroup.reduce((sum, asset) => sum + getAssetValue(asset), 0);
+                  
+                  return (
+                    <div key={groupIndex} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h4 className="font-medium text-slate-900">
+                            {firstAsset.name} ({firstAsset.type})
+                            {isMarketAsset(firstAsset) && firstAsset.symbol && (
+                              <span className="text-slate-500 ml-2">({firstAsset.symbol})</span>
+                            )}
+                          </h4>
+                          <p className="text-sm text-slate-600">
+                            {duplicateGroup.length} tài sản trùng lặp - Tổng giá trị: {formatCurrency(totalValue)}
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => {
+                            handleMergeAssets(duplicateGroup);
+                            setShowMergeModal(false);
+                          }}
+                          className="text-sm"
+                        >
+                          <i className="fas fa-compress-arrows-alt mr-2"></i>
+                          Gộp
+                        </Button>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {duplicateGroup.map((asset, assetIndex) => (
+                          <div key={asset.id} className="bg-slate-50 p-3 rounded">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="font-medium text-sm">
+                                  #{assetIndex + 1}: {asset.name}
+                                </div>
+                                {isMarketAsset(asset) ? (
+                                  <div className="text-xs text-slate-600 mt-1">
+                                    Số lượng: {asset.quantity.toLocaleString()}<br/>
+                                    Giá mua: {formatCurrency(asset.purchasePrice)}<br/>
+                                    Giá trị: {formatCurrency(getAssetValue(asset))}
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-slate-600 mt-1">
+                                    Giá trị: {formatCurrency(getAssetValue(asset))}
+                                  </div>
+                                )}
+                                <div className="text-xs text-slate-400 mt-1">
+                                  Cập nhật: {asset.date.toDate().toLocaleDateString()}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      <div className="mt-3 p-3 bg-blue-50 rounded text-sm">
+                        <div className="font-medium text-blue-900 mb-1">
+                          <i className="fas fa-info-circle mr-2"></i>
+                          Kết quả sau khi gộp:
+                        </div>
+                        {isMarketAsset(firstAsset) ? (
+                          <div className="text-blue-800">
+                            Số lượng: {duplicateGroup.reduce((sum, asset) => sum + (isMarketAsset(asset) ? asset.quantity : 0), 0).toLocaleString()}<br/>
+                            Giá mua trung bình: {formatCurrency(
+                              duplicateGroup.reduce((sum, asset) => {
+                                if (isMarketAsset(asset)) {
+                                  return sum + (asset.quantity * asset.purchasePrice);
+                                }
+                                return sum;
+                              }, 0) / duplicateGroup.reduce((sum, asset) => sum + (isMarketAsset(asset) ? asset.quantity : 0), 0)
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-blue-800">
+                            Tổng giá trị: {formatCurrency(totalValue)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <div className="flex justify-end mt-6">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowMergeModal(false)}
+                >
+                  Đóng
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 };

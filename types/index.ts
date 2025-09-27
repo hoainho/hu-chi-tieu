@@ -69,6 +69,22 @@ export interface IncomeSource {
   type: 'private' | 'shared';
   ownerId: string;
   coupleId?: string;
+  spendingSourceId?: string; // Link to spending source where money goes
+}
+
+export interface SpendingSource {
+  id: string;
+  name: string;
+  description?: string;
+  balance: number; // Current balance in this source
+  type: 'bank_account' | 'cash' | 'e_wallet' | 'credit_card' | 'other';
+  accountNumber?: string; // For bank accounts
+  // Couple's Finance fields
+  ownerType: 'private' | 'shared';
+  ownerId: string;
+  coupleId?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface Category {

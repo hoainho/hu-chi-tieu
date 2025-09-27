@@ -16,7 +16,7 @@ import {
   Firestore
 } from 'firebase/firestore';
 import db from './firebase';
-import { Transaction, IncomeSource, Category, Asset, UserProfile, Account } from '../types';
+import { Transaction, IncomeSource, Category, Asset, UserProfile, Account, SpendingSource } from '../types';
 import { User } from 'firebase/auth';
 import { updateEnvelopeSpending } from './accountService';
 
@@ -41,6 +41,94 @@ const handleFirestoreOperation = async <T>(operation: () => Promise<T>): Promise
       throw new Error('Firestore operation failed: Unknown error');
     }
   }
+};
+
+// --- Spending Sources ---
+
+export const getSpendingSources = async (userId: string): Promise<SpendingSource[]> => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    console.log('Fetching spending sources for user:', userId);
+    
+    try {
+      // Query for owned sources (without orderBy to avoid index requirement)
+      const ownedQuery = query(
+        collection(database, 'spendingSources'),
+        where('ownerId', '==', userId)
+      );
+      
+      const ownedSnapshot = await getDocs(ownedQuery);
+      const ownedSources = ownedSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SpendingSource));
+      
+      console.log('Found owned sources:', ownedSources.length);
+      
+      // For now, only get owned sources to avoid composite index issues
+      // TODO: Add shared sources query when composite index is available
+      const allSources = ownedSources;
+      
+      // Sort in JavaScript instead of Firestore
+      console.log('Total spending sources:', allSources.length, allSources);
+      return allSources.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+    } catch (error) {
+      console.error('Error fetching spending sources:', error);
+      // Fallback: get all documents without any filtering
+      const allQuery = query(collection(database, 'spendingSources'));
+      const allSnapshot = await getDocs(allQuery);
+      const allSources = allSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as SpendingSource))
+        .filter(source => source.ownerId === userId || source.coupleId === userId);
+      
+      console.log('Fallback: Total spending sources:', allSources.length);
+      return allSources.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+    }
+  });
+};
+
+export const addSpendingSource = async (spendingSource: Omit<SpendingSource, 'id'>) => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    console.log('Adding spending source to Firestore:', spendingSource);
+    const docRef = await addDoc(collection(database, 'spendingSources'), spendingSource);
+    console.log('Added spending source with ID:', docRef.id);
+    return docRef;
+  });
+};
+
+export const updateSpendingSource = async (id: string, updates: Partial<SpendingSource>) => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    const spendingSourceRef = doc(database, 'spendingSources', id);
+    await updateDoc(spendingSourceRef, { ...updates, updatedAt: Timestamp.now() });
+  });
+};
+
+export const deleteSpendingSource = async (id: string) => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    await deleteDoc(doc(database, 'spendingSources', id));
+  });
+};
+
+export const updateSpendingSourceBalance = async (id: string, amount: number, operation: 'add' | 'subtract') => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    const spendingSourceRef = doc(database, 'spendingSources', id);
+    const spendingSourceDoc = await getDoc(spendingSourceRef);
+    
+    if (!spendingSourceDoc.exists()) {
+      throw new Error('Spending source not found');
+    }
+    
+    const currentBalance = spendingSourceDoc.data().balance || 0;
+    const newBalance = operation === 'add' ? currentBalance + amount : currentBalance - amount;
+    
+    await updateDoc(spendingSourceRef, {
+      balance: newBalance,
+      updatedAt: Timestamp.now()
+    });
+    
+    return newBalance;
+  });
 };
 
 // --- User Profile ---

@@ -5,10 +5,14 @@ import { Transaction, Category, Account } from '../../types';
 import { useAppSelector, useAppDispatch } from '../../store';
 import { fetchAccounts } from '../../store/slices/accountSlice';
 import { createTransaction, removeTransaction } from '../../store/slices/transactionSlice';
+import { fetchSpendingSources, updateBalance } from '../../store/slices/spendingSourceSlice';
+import { deductSpendingFromBalance } from '../../store/slices/availableBalanceSlice';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
+import ConfirmModal from '../ui/ConfirmModal';
+import NotificationModal from '../ui/NotificationModal';
 import { formatCurrency } from '../../utils/formatters';
 import { formatDate } from '../../utils/dateHelpers';
 
@@ -23,6 +27,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
   const dispatch = useAppDispatch();
   const { profile } = useAppSelector(state => state.user);
   const { accounts, loading: accountsLoading } = useAppSelector(state => state.account);
+  const { spendingSources, loading: spendingSourcesLoading, error: spendingSourcesError } = useAppSelector(state => state.spendingSource);
+  
+  // Debug logging
+  console.log('TransactionManager - spendingSources:', spendingSources);
+  console.log('TransactionManager - spendingSourcesLoading:', spendingSourcesLoading);
+  console.log('TransactionManager - spendingSourcesError:', spendingSourcesError);
   
   // Local state
   const [description, setDescription] = useState('');
@@ -33,6 +43,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
   const [isShared, setIsShared] = useState(false);
   const [paidBy, setPaidBy] = useState(profile?.uid || '');
   const [selectedEnvelope, setSelectedEnvelope] = useState('');
+  const [selectedSpendingSource, setSelectedSpendingSource] = useState('');
+  
+  // Modal states
+  const [deleteModal, setDeleteModal] = useState<{isOpen: boolean, transactionId: string, transactionName: string}>({isOpen: false, transactionId: '', transactionName: ''});
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [notificationModal, setNotificationModal] = useState<{isOpen: boolean, type: 'success' | 'error', title: string, message: string}>({isOpen: false, type: 'success', title: '', message: ''});
   
   // Get default account (first account)
   const defaultAccount = accounts.length > 0 ? accounts[0] : null;
@@ -49,10 +65,15 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
       }
   }, [profile]);
 
-  // Load accounts using Redux
+  // Load accounts and spending sources using Redux
   useEffect(() => {
     if (profile?.uid && accounts.length === 0 && !accountsLoading) {
       dispatch(fetchAccounts(profile.uid));
+    }
+    if (profile?.uid) {
+      console.log('Loading spending sources for user:', profile.uid);
+      console.log('Current spending sources:', spendingSources);
+      dispatch(fetchSpendingSources(profile.uid));
     }
   }, [profile?.uid, accounts.length, accountsLoading, dispatch]);
 
@@ -74,6 +95,11 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
         return;
     }
     
+    if (!selectedSpendingSource) {
+        toast.error('Vui lòng chọn nguồn tiền để trừ chi tiêu.');
+        return;
+    }
+    
     if (!defaultAccount) {
         toast.error('Không tìm thấy tài khoản. Vui lòng tạo tài khoản trước.');
         return;
@@ -88,8 +114,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
     
     const amountValue = parseFloat(amount);
     
+    const selectedSource = spendingSources.find(source => source.id === selectedSpendingSource);
+    
     const newTransaction: Omit<Transaction, 'id'> = {
-      description,
+      description: `${description}${selectedSource ? ` - Nguồn: ${selectedSource.name}` : ''}`,
       amount: amountValue,
       originalAmount: amountValue,
       originalCurrency: 'VND',
@@ -105,33 +133,87 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
     };
 
     try {
-      await dispatch(createTransaction(newTransaction)).unwrap();
-      toast.success('Thêm chi tiêu thành công!');
+      const transactionResult = await dispatch(createTransaction(newTransaction)).unwrap();
+      
+      // Update spending source balance (subtract money)
+      await dispatch(updateBalance({
+        spendingSourceId: selectedSpendingSource,
+        amount: amountValue,
+        operation: 'subtract',
+        description: `Chi tiêu: ${description}`
+      }));
+      
+      // Update available balance
+      await dispatch(deductSpendingFromBalance({
+        userId: profile.uid,
+        amount: amountValue,
+        description: `Chi tiêu: ${description}${selectedSource ? ` - Nguồn: ${selectedSource.name}` : ''}`,
+        sourceId: transactionResult?.id || `spending-${Date.now()}`,
+        coupleId: profile.coupleId
+      }));
+      
+      // Show success notification
+      setNotificationModal({
+        isOpen: true,
+        type: 'success',
+        title: 'Thành công!',
+        message: `Đã thêm chi tiêu "${description}" với số tiền ${formatCurrency(amountValue)} từ ${selectedSource?.name || 'nguồn đã chọn'}.`
+      });
+      
       setDescription('');
       setAmount('');
       if (categories.length > 0) setCategory(categories[0].name);
       setDate(new Date().toISOString().split('T')[0]);
       setIsShared(false);
+      setSelectedSpendingSource('');
       onDataChange();
     } catch (error: any) {
-      toast.error(error || 'Thêm chi tiêu thất bại.');
+      setNotificationModal({
+        isOpen: true,
+        type: 'error',
+        title: 'Lỗi thêm chi tiêu!',
+        message: error || 'Không thể thêm chi tiêu. Vui lòng kiểm tra lại thông tin.'
+      });
       console.error(error);
     } finally {
         setIsSubmitting(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!profile) return;
-    if (window.confirm('Bạn có chắc chắn muốn xóa giao dịch này không?')) {
-        try {
-            await dispatch(removeTransaction({ transactionId: id, userId: profile.uid })).unwrap();
-            toast.success('Xóa giao dịch thành công!');
-            onDataChange();
-        } catch (error: any) {
-            toast.error(error || 'Xóa giao dịch thất bại.');
-            console.error(error);
-        }
+  const handleDeleteClick = (id: string, description: string) => {
+    setDeleteModal({
+      isOpen: true,
+      transactionId: id,
+      transactionName: description
+    });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!profile || !deleteModal.transactionId) return;
+    
+    setIsDeleting(true);
+    try {
+      await dispatch(removeTransaction({ transactionId: deleteModal.transactionId, userId: profile.uid })).unwrap();
+      
+      setDeleteModal({isOpen: false, transactionId: '', transactionName: ''});
+      setNotificationModal({
+        isOpen: true,
+        type: 'success',
+        title: 'Xóa thành công!',
+        message: `Đã xóa giao dịch "${deleteModal.transactionName}" khỏi hệ thống.`
+      });
+      
+      onDataChange();
+    } catch (error: any) {
+      setNotificationModal({
+        isOpen: true,
+        type: 'error',
+        title: 'Lỗi xóa giao dịch!',
+        message: error || 'Không thể xóa giao dịch. Vui lòng thử lại.'
+      });
+      console.error(error);
+    } finally {
+      setIsDeleting(false);
     }
   };
   
@@ -140,19 +222,64 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
       <Card className="lg:col-span-1">
         <h2 className="text-lg font-semibold mb-4">Thêm chi tiêu mới</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
+          <div className="animate-fade-in animate-stagger-1">
             <label className="block text-sm font-medium text-slate-700">Mô tả</label>
             <Input type="text" value={description} onChange={(e) => setDescription(e.target.value)} required />
           </div>
-          <div>
+          <div className="animate-fade-in animate-stagger-2">
             <label className="block text-sm font-medium text-slate-700">Số tiền (VND)</label>
             <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} required min="1" step="1" />
           </div>
-          <div>
+          <div className="animate-fade-in animate-stagger-3">
             <label className="block text-sm font-medium text-slate-700">Danh mục</label>
             <Select value={category} onChange={(e) => setCategory(e.target.value)}>
               {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
             </Select>
+          </div>
+          
+          
+          <div className="animate-fade-in animate-stagger-4">
+            <label className="block text-sm font-medium text-slate-700">Nguồn tiền để trừ <span className="text-red-500">*</span></label>
+            {console.log('Rendering spending sources:', spendingSources)}
+            <Select 
+              value={selectedSpendingSource} 
+              onChange={(e) => setSelectedSpendingSource(e.target.value)} 
+              required
+              disabled={spendingSourcesLoading}
+            >
+              <option value="">
+                {spendingSourcesLoading ? "— Đang tải... —" : "— Chọn nguồn tiền —"}
+              </option>
+              {spendingSources.map(source => (
+                <option key={source.id} value={source.id}>
+                  {source.name} ({formatCurrency(source.balance)})
+                </option>
+              ))}
+            </Select>
+            {spendingSourcesError && (
+              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-800">
+                  <i className="fas fa-exclamation-circle mr-2"></i>
+                  Lỗi tải nguồn chi tiêu: {spendingSourcesError}
+                </p>
+                <button 
+                  type="button"
+                  onClick={() => profile?.uid && dispatch(fetchSpendingSources(profile.uid))}
+                  className="mt-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded hover:bg-red-200"
+                >
+                  🔄 Thử lại
+                </button>
+              </div>
+            )}
+            {!spendingSourcesError && spendingSources.length === 0 && !spendingSourcesLoading && (
+              <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  <i className="fas fa-exclamation-triangle mr-2"></i>
+                  Chưa có nguồn chi tiêu nào. 
+                  <a href="/spending-sources" className="underline ml-1">Tạo nguồn đầu tiên</a>
+                </p>
+              </div>
+            )}
           </div>
           
           {defaultAccount && (() => {
@@ -231,7 +358,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
           )}
           <Button 
             type="submit" 
-            disabled={isSubmitting || categories.length === 0 || !defaultAccount || !selectedEnvelope} 
+            disabled={isSubmitting || categories.length === 0 || !defaultAccount || !selectedEnvelope || !selectedSpendingSource || spendingSources.length === 0} 
             className="w-full"
           >
             {isSubmitting ? 'Đang thêm...' : 'Thêm chi tiêu'}
@@ -265,7 +392,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-red-500 text-right">-{formatCurrency(t.amount)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     {t.ownerId === profile?.uid && (
-                        <button onClick={() => handleDelete(t.id)} className="text-red-600 hover:text-red-900"><i className="fas fa-trash"></i></button>
+                        <button 
+                          onClick={() => handleDeleteClick(t.id, t.description)} 
+                          className="text-red-600 hover:text-red-900 transition-colors duration-200 hover:scale-110 transform"
+                        >
+                          <i className="fas fa-trash"></i>
+                        </button>
                     )}
                   </td>
                 </tr>
@@ -279,6 +411,30 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
           </table>
         </div>
       </Card>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={deleteModal.isOpen}
+        onClose={() => setDeleteModal({isOpen: false, transactionId: '', transactionName: ''})}
+        onConfirm={handleDeleteConfirm}
+        title="Xác nhận xóa giao dịch"
+        message={`Bạn có chắc chắn muốn xóa giao dịch "${deleteModal.transactionName}" không? Hành động này không thể hoàn tác.`}
+        confirmText="Xóa"
+        cancelText="Hủy"
+        type="danger"
+        isLoading={isDeleting}
+      />
+
+      {/* Notification Modal */}
+      <NotificationModal
+        isOpen={notificationModal.isOpen}
+        onClose={() => setNotificationModal({isOpen: false, type: 'success', title: '', message: ''})}
+        title={notificationModal.title}
+        message={notificationModal.message}
+        type={notificationModal.type}
+        autoClose={notificationModal.type === 'success'}
+        autoCloseDelay={3000}
+      />
     </div>
   );
 };
