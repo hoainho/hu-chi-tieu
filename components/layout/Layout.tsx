@@ -26,7 +26,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <div className="p-6 border-b border-slate-700/50">
             <h1 className="text-xl font-bold text-white flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-                    <i className="fas fa-chart-line text-white"></i>
+                    <img src="https://res.cloudinary.com/dgzdswdgg/image/upload/v1759063655/logo_wikesi.png" alt="Logo" className="w-full h-full object-contain" />
                 </div>
                 <div>
                     <div className="text-lg">Hủ Tài Chính</div>

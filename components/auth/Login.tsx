@@ -88,7 +88,7 @@ const Login: React.FC = () => {
             <div className="relative inline-block">
               <div className="absolute inset-0 bg-gradient-to-r from-pink-500 to-violet-500 rounded-full blur-xl opacity-30 animate-pulse-gentle"></div>
               <div className="relative bg-gradient-to-r from-pink-500 to-violet-500 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl transform hover:scale-110 transition-all duration-300">
-                <i className="fas fa-piggy-bank text-3xl text-white animate-bounce-subtle"></i>
+                <img src="https://res.cloudinary.com/dgzdswdgg/image/upload/v1759063655/logo_wikesi.png" alt="Logo" className="w-full h-full object-contain" />
               </div>
             </div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent mb-2">
