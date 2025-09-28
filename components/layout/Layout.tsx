@@ -30,7 +30,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </div>
                 <div>
                     <div className="text-lg">Hủ Tài Chính</div>
-                    <div className="text-xs text-slate-400 font-normal">2025 Edition</div>
+                    <div className="text-xs text-slate-400 font-normal">@hoainho edition</div>
                 </div>
             </h1>
         </div>
