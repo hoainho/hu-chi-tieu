@@ -600,7 +600,7 @@ const ModernDashboard: React.FC = () => {
           {/* Currency Selector */}
           <GlassCard className="p-4">
             <div className="flex items-center space-x-3">
-              <label className="text-sm font-medium text-gray-700">Xem theo:</label>
+              <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Xem theo:</label>
               <select
                 value={selectedCurrency}
                 onChange={(e) => setSelectedCurrency(e.target.value as any)}

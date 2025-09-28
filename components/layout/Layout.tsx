@@ -93,7 +93,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <button onClick={() => setSidebarOpen(true)} className="text-slate-600 hover:text-slate-800 transition-colors">
                     <i className="fas fa-bars text-xl"></i>
                 </button>
-                <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Hủ Tài Chính 2025</h1>
+                <h1 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Hủ Tài Chính</h1>
                 <div></div>
             </header>
             <main className="flex-1 p-6 overflow-x-hidden overflow-y-auto">
