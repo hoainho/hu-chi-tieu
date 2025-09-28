@@ -24,4 +24,4 @@ export interface CategoryGroup {
   name: string;
   categories: Category[];
   order: number;
-}
+} 

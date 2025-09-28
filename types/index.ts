@@ -93,7 +93,7 @@ export interface Category {
   ownerId: string; // User ID or Couple ID
 }
 
-export type AssetType = 'savings' | 'stock' | 'crypto' | 'gold' | 'real_estate' | 'bond' | 'other';
+export type AssetType = 'savings' | 'stock' | 'crypto' | 'gold' | 'real_estate' | 'bond' | 'mutual_fund' | 'other';
 
 // Base Asset interface
 export interface BaseAsset {
@@ -114,10 +114,10 @@ export interface FixedValueAsset extends BaseAsset {
   value: number; // Fixed value in VND
 }
 
-// Asset with quantity and market price (stock, crypto, gold)
+// Asset with quantity and market price (stock, crypto, gold, mutual_fund)
 export interface MarketAsset extends BaseAsset {
-  type: 'stock' | 'crypto' | 'gold';
-  quantity: number;          // REQUIRED: Number of shares/coins/ounces
+  type: 'stock' | 'crypto' | 'gold' | 'mutual_fund';
+  quantity: number;          // REQUIRED: Number of shares/coins/ounces/units
   purchasePrice: number;     // REQUIRED: Original purchase price per unit (in VND)
   
   // Market data (updated automatically)
@@ -139,7 +139,7 @@ export type Asset = FixedValueAsset | MarketAsset;
 
 // Type guards
 export const isMarketAsset = (asset: Asset): asset is MarketAsset => {
-  return ['stock', 'crypto', 'gold'].includes(asset.type);
+  return ['stock', 'crypto', 'gold', 'mutual_fund'].includes(asset.type);
 };
 
 export const isFixedValueAsset = (asset: Asset): asset is FixedValueAsset => {

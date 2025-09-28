@@ -28,7 +28,7 @@ const AssetsPage: React.FC = () => {
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
 
   // Check if current type is a market asset
-  const isMarketAssetType = ['stock', 'crypto', 'gold'].includes(type);
+  const isMarketAssetType = ['stock', 'crypto', 'gold', 'mutual_fund'].includes(type);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -289,6 +289,26 @@ const AssetsPage: React.FC = () => {
     }
   }
 
+  const generateType = (type) => {
+    switch (type) {
+      case 'stock':
+        return 'Cổ Phiếu';
+      case 'crypto':
+        return 'Coin';
+      case 'gold':
+        return 'Chỉ';
+      case 'mutual_fund':
+        return 'CCQ';
+      case 'real_estate':
+        return 'BĐS';
+      case 'bond':
+        return 'PST';
+      case 'other':
+        return 'Khác';
+      default:
+        return type;
+    }
+  }
 
   if (loading) {
     return (
@@ -330,6 +350,7 @@ const AssetsPage: React.FC = () => {
                   <option value="stock">Chứng khoán</option>
                   <option value="crypto">Tiền điện tử</option>
                   <option value="gold">Vàng</option>
+                  <option value="mutual_fund">Chứng chỉ quỹ</option>
                   <option value="real_estate">Bất động sản</option>
                   <option value="bond">Trái phiếu</option>
                   <option value="other">Khác</option>
@@ -344,14 +365,14 @@ const AssetsPage: React.FC = () => {
                     type="number" 
                     value={quantity} 
                     onChange={(e) => setQuantity(e.target.value)} 
-                    placeholder={type === 'stock' ? 'Số cổ phiếu' : type === 'crypto' ? 'Số coin' : 'Số lượng (chỉ/cây)'} 
+                    placeholder={generateType(type)} 
                     required 
                     min="0" 
                     step="0.01" 
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Giá mua (VND/{type === 'stock' ? 'CP' : type === 'crypto' ? 'coin' : 'chỉ'})</label>
+                  <label className="block text-sm font-medium text-slate-700">Giá mua (VND/{generateType(type)})</label>
                   <Input 
                     type="number" 
                     value={purchasePrice} 
@@ -472,12 +493,7 @@ const AssetsPage: React.FC = () => {
                         </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                      {a.type === 'savings' ? 'Tiết kiệm' :
-                       a.type === 'stock' ? 'Chứng khoán' :
-                       a.type === 'crypto' ? 'Crypto' :
-                       a.type === 'gold' ? 'Vàng' :
-                       a.type === 'real_estate' ? 'BĐS' :
-                       a.type === 'bond' ? 'Trái phiếu' : 'Khác'}
+                      {generateType(a.type)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                       {isMarketAsset(a) ? (
@@ -489,7 +505,7 @@ const AssetsPage: React.FC = () => {
                             'đơn vị'
                           }</div>
                           <div className="text-xs text-slate-400">
-                            @ {formatCurrency(a.purchasePrice)}/{a.type === 'stock' ? 'CP' : a.type === 'crypto' ? 'coin' : 'chỉ'}
+                            {formatCurrency(a.purchasePrice)}{a.type === 'crypto' ? '$' : ''}/{generateType(a.type)}
                           </div>
                         </div>
                       ) : (

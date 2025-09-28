@@ -127,13 +127,12 @@ const CategorySpendingAnalysis: React.FC = () => {
     };
   }, [transactions]);
 
-  if (!categoryAnalysis) {
+  if (!categoryAnalysis || !categoryAnalysis.biggestSpender || !categoryAnalysis.mostFrequent || categoryAnalysis.transactionCount === 0) {
     return (
       <ModernCard>
         <div className="text-center py-8">
-          <i className="fas fa-chart-pie text-4xl text-gray-300 mb-4"></i>
-          <h3 className="text-lg font-semibold text-gray-600 mb-2">Chưa có dữ liệu danh mục</h3>
-          <p className="text-gray-500">Thêm giao dịch để xem phân tích danh mục</p>
+          <i className="fas fa-chart-pie text-gray-400 text-4xl mb-4"></i>
+          <p className="text-gray-500">Chưa có dữ liệu chi tiêu trong tháng này</p>
         </div>
       </ModernCard>
     );
@@ -166,7 +165,7 @@ const CategorySpendingAnalysis: React.FC = () => {
                 dataKey="amount"
               >
                 {categoryAnalysis.chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.config.color} />
+                  <Cell key={`cell-${index}`} fill={entry.config?.color || '#8884d8'} />
                 ))}
               </Pie>
               <Tooltip 
@@ -189,12 +188,12 @@ const CategorySpendingAnalysis: React.FC = () => {
                 <div className="flex items-center space-x-3">
                   <div 
                     className="w-4 h-4 rounded-full"
-                    style={{ backgroundColor: category.config.color }}
+                    style={{ backgroundColor: category.config?.color || '#8884d8' }}
                   ></div>
                   <div>
                     <div className="flex items-center space-x-2">
-                      <i className={`${category.config.icon} text-sm text-gray-600`}></i>
-                      <span className="font-medium text-sm">{category.config.name}</span>
+                      <i className={`${category.config?.icon || 'fas fa-chart-pie'} text-sm text-gray-600`}></i>
+                      <span className="font-medium text-sm">{category.config?.name || category.category}</span>
                     </div>
                     <div className="text-xs text-gray-500">{category.count} giao dịch</div>
                   </div>
@@ -215,22 +214,22 @@ const CategorySpendingAnalysis: React.FC = () => {
         <div className="bg-red-50/50 rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-sm font-semibold text-red-800">Chi tiêu nhiều nhất</h4>
-            <i className={`${categoryAnalysis.biggestSpender.config.icon} text-red-600`}></i>
+            <i className={`${categoryAnalysis.biggestSpender?.config?.icon || 'fas fa-chart-pie'} text-red-600`}></i>
           </div>
           <div className="space-y-1">
-            <div className="font-medium text-red-900">{categoryAnalysis.biggestSpender.config.name}</div>
+            <div className="font-medium text-red-900">{categoryAnalysis.biggestSpender?.config?.name || categoryAnalysis.biggestSpender?.category || 'N/A'}</div>
             <div className="text-lg font-bold text-red-700">
-              {formatVietnameseCurrency(categoryAnalysis.biggestSpender.amount)}
+              {formatVietnameseCurrency(categoryAnalysis.biggestSpender?.amount || 0)}
             </div>
             <div className="text-xs text-red-600">
-              {categoryAnalysis.biggestSpender.percentage.toFixed(1)}% tổng chi tiêu
+              {(categoryAnalysis.biggestSpender?.percentage || 0).toFixed(1)}% tổng chi tiêu
             </div>
-            {categoryAnalysis.biggestSpender.change !== undefined && (
+            {categoryAnalysis.biggestSpender?.change !== undefined && (
               <div className={`text-xs ${
                 categoryAnalysis.biggestSpender.change > 0 ? 'text-red-600' : 'text-green-600'
               }`}>
                 {categoryAnalysis.biggestSpender.change > 0 ? '↗️' : '↘️'} 
-                {Math.abs(categoryAnalysis.biggestSpender.changePercent).toFixed(1)}% vs tháng trước
+                {Math.abs(categoryAnalysis.biggestSpender.changePercent || 0).toFixed(1)}% vs tháng trước
               </div>
             )}
           </div>
@@ -240,15 +239,15 @@ const CategorySpendingAnalysis: React.FC = () => {
         <div className="bg-blue-50/50 rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-sm font-semibold text-blue-800">Giao dịch nhiều nhất</h4>
-            <i className={`${categoryAnalysis.mostFrequent.config.icon} text-blue-600`}></i>
+            <i className={`${categoryAnalysis.mostFrequent?.config?.icon || 'fas fa-chart-pie'} text-blue-600`}></i>
           </div>
           <div className="space-y-1">
-            <div className="font-medium text-blue-900">{categoryAnalysis.mostFrequent.config.name}</div>
+            <div className="font-medium text-blue-900">{categoryAnalysis.mostFrequent?.config?.name || categoryAnalysis.mostFrequent?.category || 'N/A'}</div>
             <div className="text-lg font-bold text-blue-700">
-              {categoryAnalysis.mostFrequent.count} giao dịch
+              {categoryAnalysis.mostFrequent?.count || 0} giao dịch
             </div>
             <div className="text-xs text-blue-600">
-              TB: {formatVietnameseCurrency(categoryAnalysis.mostFrequent.amount / categoryAnalysis.mostFrequent.count)}/GD
+              TB: {formatVietnameseCurrency((categoryAnalysis.mostFrequent?.amount || 0) / (categoryAnalysis.mostFrequent?.count || 1))}/GD
             </div>
           </div>
         </div>
@@ -262,13 +261,13 @@ const CategorySpendingAnalysis: React.FC = () => {
         </h4>
         <div className="bg-yellow-50/50 rounded-lg p-4">
           <div className="flex items-start space-x-3">
-            <i className={`${categoryAnalysis.biggestSpender.config.icon} text-yellow-600 mt-1`}></i>
+            <i className={`${categoryAnalysis.biggestSpender?.config?.icon || 'fas fa-chart-pie'} text-yellow-600 mt-1`}></i>
             <div>
               <div className="font-medium text-yellow-900 mb-2">
-                {categoryAnalysis.biggestSpender.config.name} - {formatVietnameseCurrency(categoryAnalysis.biggestSpender.amount)}
+                {categoryAnalysis.biggestSpender?.config?.name || categoryAnalysis.biggestSpender?.category || 'N/A'} - {formatVietnameseCurrency(categoryAnalysis.biggestSpender?.amount || 0)}
               </div>
               <ul className="space-y-1">
-                {categoryAnalysis.biggestSpender.config.tips.map((tip, index) => (
+                {(categoryAnalysis.biggestSpender?.config?.tips || []).map((tip, index) => (
                   <li key={index} className="text-sm text-yellow-800 flex items-start">
                     <span className="text-yellow-600 mr-2">•</span>
                     {tip}

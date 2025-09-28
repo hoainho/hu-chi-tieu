@@ -45,6 +45,7 @@ import {
   Tooltip,
   Legend
 } from 'recharts';
+import { ASSET_TYPES } from '@/constants/assets';
 
 const ModernDashboard: React.FC = () => {
   // Helper functions for stock and crypto names
@@ -648,18 +649,21 @@ const ModernDashboard: React.FC = () => {
                   value={convertAmount(
                     // Calculate total investment value from OWNED assets only
                     assets.reduce((total, asset) => {
-                      if (asset.type === 'stock') {
+                      if (asset.type === ASSET_TYPES.stock) {
                         const stockPrice = vietnamStocks.find(s => s.symbol === asset.symbol)?.price;
                         return total + (stockPrice ? stockPrice * (asset.quantity || 0) : 0);
                       }
-                      if (asset.type === 'crypto') {
+                      if (asset.type === ASSET_TYPES.crypto) {
                         const cryptoPrice = cryptoPrices.find(c => c.symbol === asset.symbol)?.price;
                         const vndPrice = cryptoPrice ? convertToVND(cryptoPrice, 'USD') : 0;
                         return total + (vndPrice * (asset.quantity || 0));
                       }
-                      if (asset.type === 'gold') {
+                      if (asset.type === ASSET_TYPES.gold) {
                         const goldPrice = goldPrices.find(g => g.type === 'PNJ')?.buyPrice || 0;
                         return total + (goldPrice * (asset.quantity || 0) / 10);
+                      }
+                      if (asset.type === ASSET_TYPES.mutual_fund || asset.type === ASSET_TYPES.other) {
+                        return total + (asset.purchasePrice * asset.quantity)
                       }
                       return total;
                     }, 0)
@@ -669,7 +673,7 @@ const ModernDashboard: React.FC = () => {
               </div>
               <div className="text-sm text-gray-600">Tổng đầu tư</div>
               <div className="text-xs text-indigo-600 mt-2">
-                {assets.filter(a => ['stock', 'crypto', 'gold'].includes(a.type)).length} tài sản sở hữu
+                {assets.filter(a => ['stock', 'crypto', 'gold', 'mutual_fund'].includes(a.type)).length} tài sản sở hữu
               </div>
             </div>
           </ModernCard>

@@ -57,7 +57,8 @@ class MarketDataService {
           headers: {
             'Accept': 'application/json',
             'User-Agent': 'HuChiTieu-App/1.0'
-          }
+          },
+          mode: 'cors'
         }
       );
 
@@ -67,43 +68,47 @@ class MarketDataService {
 
       const data: CoinGeckoResponse = await response.json();
       
-      return Object.entries(data).map(([coinId, priceData]) => {
+      const results: MarketData[] = [];
+      
+      Object.entries(data).forEach(([coinId, priceData]) => {
         const symbol = Object.keys(symbolToId).find(key => symbolToId[key] === coinId) || coinId.toUpperCase();
         
         const marketData: MarketData = {
           symbol: symbol,
-          name: this.getCryptoName(symbol),
+          name: symbol.charAt(0).toUpperCase() + symbol.slice(1),
           currentPrice: priceData.vnd,
           priceChange24h: (priceData.vnd_24h_change / 100) * priceData.vnd,
           priceChangePercent24h: priceData.vnd_24h_change,
           marketCap: priceData.vnd_market_cap,
           volume24h: priceData.vnd_24h_vol,
           lastUpdated: priceData.last_updated_at * 1000,
-          logoUrl: `https://assets.coingecko.com/coins/images/${this.getCoinGeckoImageId(symbol)}/small/${symbol.toLowerCase()}.png`,
-          type: 'crypto'
+          type: 'crypto' as const
         };
 
         // Cache the data
         this.marketDataCache.set(symbol, marketData);
         this.cacheExpiry.set(symbol, Date.now() + this.CACHE_DURATION);
-
-        return marketData;
+        
+        results.push(marketData);
       });
+      
+      return results;
 
     } catch (error) {
       console.error('Failed to fetch crypto data:', error);
       
-      // Return cached data if available
-      const cachedData = symbols.map(symbol => this.marketDataCache.get(symbol.toUpperCase()))
-        .filter(Boolean) as MarketData[];
-      
-      if (cachedData.length > 0) {
-        console.log('Using cached crypto data');
-        return cachedData;
-      }
-
-      // Return empty array instead of fallback data
-      return [];
+      // Return fallback data when API fails (CORS or network issues)
+      return symbols.map(symbol => ({
+        symbol: symbol.toUpperCase(),
+        name: symbol.charAt(0).toUpperCase() + symbol.slice(1),
+        currentPrice: 0,
+        priceChange24h: 0,
+        priceChangePercent24h: 0,
+        marketCap: 0,
+        volume24h: 0,
+        lastUpdated: Date.now(),
+        type: 'crypto' as const
+      }));
     }
   }
 

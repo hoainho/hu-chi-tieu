@@ -90,6 +90,11 @@ const EnhancedAssetForm: React.FC = () => {
       color: 'from-indigo-500 to-indigo-600',
       fields: ['name', 'value', 'description']
     },
+    mutual_fund: {
+      icon: 'fas fa-chart-pie',
+      color: 'from-teal-500 to-teal-600',
+      fields: ['name', 'symbol', 'quantity', 'purchasePrice', 'description']
+    },
     other: {
       icon: 'fas fa-box',
       color: 'from-gray-500 to-gray-600',
@@ -104,6 +109,10 @@ const EnhancedAssetForm: React.FC = () => {
 
   const popularCryptos = [
     'BTC', 'ETH', 'BNB', 'SOL'
+  ];
+
+  const popularMutualFunds = [
+    'VFMVN30', 'VFMVN100', 'DCDS', 'DCBC', 'SSISCA', 'SSIAM', 'VESAF', 'VEOF'
   ];
 
   // Load market preview when symbol changes
@@ -204,7 +213,7 @@ const EnhancedAssetForm: React.FC = () => {
       await addAsset(asset);
       
       // Create corresponding transaction for investment assets
-      if (['stock', 'crypto', 'gold'].includes(formData.type)) {
+      if (['stock', 'crypto', 'gold', 'mutual_fund'].includes(formData.type)) {
         const investmentAmount = Math.abs(value);
         const investmentTransaction = {
           amount: -investmentAmount, // Negative for expense
@@ -228,7 +237,7 @@ const EnhancedAssetForm: React.FC = () => {
         await addTransaction(investmentTransaction);
       }
       
-      toast.success(`${['stock', 'crypto', 'gold'].includes(formData.type) ? 'Investment and transaction' : 'Asset'} added successfully!`);
+      toast.success(`${['stock', 'crypto', 'gold', 'mutual_fund'].includes(formData.type) ? 'Investment and transaction' : 'Asset'} added successfully!`);
       
       // Reset form
       setFormData({
@@ -338,7 +347,10 @@ const EnhancedAssetForm: React.FC = () => {
                         
                         {/* Popular symbols */}
                         <div className="flex flex-wrap gap-2">
-                          {(formData.type === 'stock' ? popularStocks : popularCryptos).slice(0, 8).map(symbol => (
+                          {(formData.type === 'stock' ? popularStocks : 
+                            formData.type === 'crypto' ? popularCryptos : 
+                            formData.type === 'mutual_fund' ? popularMutualFunds : 
+                            []).slice(0, 8).map(symbol => (
                             <button
                               key={symbol}
                               type="button"

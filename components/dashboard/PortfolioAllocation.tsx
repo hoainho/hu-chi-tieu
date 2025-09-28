@@ -39,7 +39,8 @@ const PortfolioAllocation: React.FC<PortfolioAllocationProps> = ({
   const assetTypeValues = {
     stock: 0,
     crypto: 0,
-    gold: 0
+    gold: 0,
+    mutual_fund: 0
   };
 
   investmentAssets.forEach(asset => {
@@ -54,10 +55,12 @@ const PortfolioAllocation: React.FC<PortfolioAllocationProps> = ({
       assetTypeValues.crypto += currentValue;
     } else if (asset.type === 'gold') {
       assetTypeValues.gold += currentValue;
+    } else if (asset.type === 'mutual_fund') {
+      assetTypeValues.mutual_fund += currentValue;
     }
   });
 
-  const totalValue = assetTypeValues.stock + assetTypeValues.crypto + assetTypeValues.gold;
+  const totalValue = assetTypeValues.stock + assetTypeValues.crypto + assetTypeValues.gold + (assetTypeValues.mutual_fund || 0);
 
   // Prepare data for pie chart
   const pieData = [
@@ -78,6 +81,12 @@ const PortfolioAllocation: React.FC<PortfolioAllocationProps> = ({
       value: assetTypeValues.gold,
       percentage: totalValue > 0 ? (assetTypeValues.gold / totalValue) * 100 : 0,
       color: '#EAB308'
+    },
+    {
+      name: 'Chứng chỉ quỹ',
+      value: assetTypeValues.mutual_fund,
+      percentage: totalValue > 0 ? (assetTypeValues.mutual_fund / totalValue) * 100 : 0,
+      color: '#14B8A6'
     }
   ].filter(item => item.value > 0);
 
