@@ -73,6 +73,7 @@ export const useCurrencyRates = (): UseCurrencyRatesReturn => {
    */
   useEffect(() => {
     const unsubscribers: Array<() => void> = [];
+    let hasPermissionError = false;
     
     const currencies = ['USD', 'EUR', 'JPY'];
     
@@ -113,20 +114,34 @@ export const useCurrencyRates = (): UseCurrencyRatesReturn => {
           setLoading(false);
         },
         (err) => {
-          console.error(`Lỗi lắng nghe tỷ giá ${currency}:`, err);
+          // Check if it's a permission error
+          const isPermissionError = err.code === 'permission-denied' || 
+                                   err.message?.includes('permission') ||
+                                   err.message?.includes('insufficient permissions');
           
-          // Retry với exponential backoff
-          if (retryCount.current < maxRetries) {
-            const delay = retryDelay[retryCount.current];
-            setTimeout(() => {
-              retryCount.current++;
-              // Retry logic sẽ được xử lý bởi useEffect
-            }, delay);
-          } else {
-            // Dùng fallback rates
+          if (isPermissionError && !hasPermissionError) {
+            // Permission error - use fallback immediately without retry
+            console.warn(`Không có quyền truy cập tỷ giá ${currency}, sử dụng tỷ giá dự phòng`);
+            hasPermissionError = true;
             setRates(fallbackRates);
-            setError(`Không thể kết nối tới server tỷ giá. Đang sử dụng tỷ giá dự phòng.`);
+            setError(null); // Don't show error for permission issues, just use fallback silently
             setLoading(false);
+          } else if (!isPermissionError) {
+            console.error(`Lỗi lắng nghe tỷ giá ${currency}:`, err);
+            
+            // Retry với exponential backoff for non-permission errors
+            if (retryCount.current < maxRetries) {
+              const delay = retryDelay[retryCount.current];
+              setTimeout(() => {
+                retryCount.current++;
+                // Retry logic sẽ được xử lý bởi useEffect
+              }, delay);
+            } else {
+              // Dùng fallback rates
+              setRates(fallbackRates);
+              setError(`Không thể kết nối tới server tỷ giá. Đang sử dụng tỷ giá dự phòng.`);
+              setLoading(false);
+            }
           }
         }
       );
@@ -248,7 +263,7 @@ export const useCurrencyRates = (): UseCurrencyRatesReturn => {
   const getConnectionStatus = useCallback((): 'online' | 'offline' | 'fallback' => {
     if (error) return 'fallback';
     
-    const hasRecentData = Object.values(rates).some(rate => {
+    const hasRecentData = Object.values(rates).some((rate: CurrencyRate) => {
       const timeDiff = Date.now() - rate.lastUpdated.getTime();
       return timeDiff < 60 * 60 * 1000; // Dữ liệu trong 1 giờ qua
     });

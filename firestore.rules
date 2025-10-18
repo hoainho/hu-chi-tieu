@@ -30,19 +30,32 @@ service cloud.firestore {
       // Log profile changes
       allow write: if isAuthenticated() && isOwner(userId) && 
         createAuditLog('profile_updated', 'user', userId);
+      
+      // Available balance subcollections
+      match /availableBalance/{month} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      match /availableBalanceTransactions/{transactionId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
     }
     
     // Account management with proper access control
     match /accounts/{accountId} {
-      allow read: if isAuthenticated() && isAccountMember(accountId);
+      // Allow read if user is in the ownerIds array (avoid circular dependency)
+      allow read: if isAuthenticated() && 
+        request.auth.uid in resource.data.ownerIds;
       
       allow create: if isAuthenticated() && 
         request.auth.uid in request.resource.data.ownerIds;
       
-      allow update: if isAuthenticated() && isAccountMember(accountId) &&
+      allow update: if isAuthenticated() && 
+        request.auth.uid in resource.data.ownerIds &&
         createAuditLog('account_updated', 'account', accountId);
       
-      allow delete: if isAuthenticated() && isAccountMember(accountId) &&
+      allow delete: if isAuthenticated() && 
+        request.auth.uid in resource.data.ownerIds &&
         createAuditLog('account_deleted', 'account', accountId);
     }
     
@@ -112,6 +125,38 @@ service cloud.firestore {
     // Personal categories (user-specific)
     match /categories/{categoryId} {
       allow read, write: if request.auth != null && 
+        resource.data.ownerId == request.auth.uid;
+      
+      allow create: if request.auth != null && 
+        request.resource.data.ownerId == request.auth.uid;
+    }
+    
+    // ============= SPENDING SOURCES =============
+    
+    // Spending sources with couple sharing
+    match /spendingSources/{sourceId} {
+      allow read: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        (resource.data.coupleId != null && hasPartnerAccess(resource.data.coupleId))
+      );
+      
+      allow write: if request.auth != null && 
+        resource.data.ownerId == request.auth.uid;
+      
+      allow create: if request.auth != null && 
+        request.resource.data.ownerId == request.auth.uid;
+    }
+    
+    // ============= ASSETS =============
+    
+    // Assets with couple sharing
+    match /assets/{assetId} {
+      allow read: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        (resource.data.coupleId != null && hasPartnerAccess(resource.data.coupleId))
+      );
+      
+      allow write: if request.auth != null && 
         resource.data.ownerId == request.auth.uid;
       
       allow create: if request.auth != null && 
@@ -287,6 +332,17 @@ service cloud.firestore {
     match /couples/{coupleId} {
       allow read, write: if isAuthenticated() && 
         request.auth.uid in resource.data.members;
+      
+      // Available balance subcollections for couples
+      match /availableBalance/{month} {
+        allow read, write: if isAuthenticated() && 
+          request.auth.uid in get(/databases/$(database)/documents/couples/$(coupleId)).data.members;
+      }
+      
+      match /availableBalanceTransactions/{transactionId} {
+        allow read, write: if isAuthenticated() && 
+          request.auth.uid in get(/databases/$(database)/documents/couples/$(coupleId)).data.members;
+      }
     }
     
     // Audit logs - append only, read by owners

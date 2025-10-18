@@ -44,6 +44,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
   const [paidBy, setPaidBy] = useState(profile?.uid || '');
   const [selectedEnvelope, setSelectedEnvelope] = useState('');
   const [selectedSpendingSource, setSelectedSpendingSource] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
   
   // Modal states
   const [deleteModal, setDeleteModal] = useState<{isOpen: boolean, transactionId: string, transactionName: string}>({isOpen: false, transactionId: '', transactionName: ''});
@@ -86,6 +90,53 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
       }
     }
   }, [defaultAccount, selectedEnvelope]);
+
+  // Filter transactions by selected month
+  const filteredTransactions = React.useMemo(() => {
+    return transactions.filter(t => {
+      const transactionDate = t.date.toDate ? t.date.toDate() : new Date(t.date);
+      const transactionMonth = `${transactionDate.getFullYear()}-${String(transactionDate.getMonth() + 1).padStart(2, '0')}`;
+      return transactionMonth === selectedMonth;
+    });
+  }, [transactions, selectedMonth]);
+
+  // Calculate total spending for selected month
+  const monthlyTotal = React.useMemo(() => {
+    return filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
+  }, [filteredTransactions]);
+
+  // Get available months from transactions
+  const availableMonths = React.useMemo(() => {
+    const months = new Set<string>();
+    // Add current month even if no transactions
+    const now = new Date();
+    months.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+    
+    transactions.forEach(t => {
+      const transactionDate = t.date.toDate ? t.date.toDate() : new Date(t.date);
+      const month = `${transactionDate.getFullYear()}-${String(transactionDate.getMonth() + 1).padStart(2, '0')}`;
+      months.add(month);
+    });
+    return Array.from(months).sort().reverse();
+  }, [transactions]);
+  
+  // Calculate category breakdown for selected month
+  const categoryBreakdown = React.useMemo(() => {
+    const breakdown: Record<string, number> = {};
+    filteredTransactions.forEach(t => {
+      breakdown[t.category] = (breakdown[t.category] || 0) + t.amount;
+    });
+    return Object.entries(breakdown)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5); // Top 5 categories
+  }, [filteredTransactions]);
+
+  // Format month for display
+  const formatMonth = (monthStr: string) => {
+    const [year, month] = monthStr.split('-');
+    const monthNames = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6', 'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
+    return `${monthNames[parseInt(month) - 1]} ${year}`;
+  };
 
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -366,7 +417,68 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
         </form>
       </Card>
       <Card className="lg:col-span-2">
-        <h2 className="text-lg font-semibold mb-4">Các chi tiêu gần đây</h2>
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Các chi tiêu gần đây</h2>
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-slate-700">Lọc theo tháng:</label>
+              <Select 
+                value={selectedMonth} 
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="w-48"
+              >
+                {availableMonths.map(month => (
+                  <option key={month} value={month}>
+                    {formatMonth(month)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          
+          {/* Monthly Summary */}
+          <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-5 mb-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm text-slate-600 mb-1">Tổng chi tiêu {formatMonth(selectedMonth)}</p>
+                <p className="text-3xl font-bold text-red-600">{formatCurrency(monthlyTotal)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-slate-600 mb-1">Số giao dịch</p>
+                <p className="text-2xl font-semibold text-slate-800">{filteredTransactions.length}</p>
+              </div>
+            </div>
+            
+            {/* Category Breakdown */}
+            {categoryBreakdown.length > 0 && (
+              <div className="pt-4 border-t border-red-200">
+                <p className="text-xs font-semibold text-slate-600 mb-2 uppercase">Top danh mục chi tiêu</p>
+                <div className="space-y-2">
+                  {categoryBreakdown.map(([category, amount]) => {
+                    const percentage = monthlyTotal > 0 ? (amount / monthlyTotal) * 100 : 0;
+                    return (
+                      <div key={category} className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="font-medium text-slate-700">{category}</span>
+                            <span className="text-slate-600">{formatCurrency(amount)} ({percentage.toFixed(0)}%)</span>
+                          </div>
+                          <div className="w-full bg-red-100 rounded-full h-1.5">
+                            <div 
+                              className="bg-red-500 h-1.5 rounded-full transition-all duration-300" 
+                              style={{ width: `${percentage}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50">
@@ -379,7 +491,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {transactions.map(t => (
+              {filteredTransactions.map(t => (
                 <tr key={t.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{formatDate(t.date)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
@@ -402,9 +514,12 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
                   </td>
                 </tr>
               ))}
-               {transactions.length === 0 && (
+               {filteredTransactions.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="text-center py-4 text-slate-500">Chưa có chi tiêu nào được ghi lại.</td>
+                  <td colSpan={5} className="text-center py-8 text-slate-500">
+                    <i className="fas fa-inbox text-4xl mb-2 opacity-50"></i>
+                    <p>Không có chi tiêu nào trong {formatMonth(selectedMonth)}</p>
+                  </td>
                 </tr>
               )}
             </tbody>

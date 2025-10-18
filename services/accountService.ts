@@ -9,7 +9,8 @@ import {
   query,
   where,
   writeBatch,
-  Timestamp
+  Timestamp,
+  arrayUnion
 } from 'firebase/firestore';
 import db from './firebase';
 import { Account, Envelope, UserProfile } from '../types';
@@ -58,14 +59,22 @@ export const createAccount = async (
     
     const docRef = await addDoc(collection(database, 'accounts'), newAccount);
     
-    // Update user profiles to include this account
+    // Update user profiles to include this account using arrayUnion
     const batch = writeBatch(database);
-    ownerIds.forEach(userId => {
+    for (const userId of ownerIds) {
       const userRef = doc(database, 'users', userId);
-      batch.update(userRef, {
-        accountIds: [...([] as string[]), docRef.id] // Will be merged with existing
-      });
-    });
+      
+      // Check if user document exists first
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        // Use arrayUnion to add accountId without duplicates
+        batch.update(userRef, {
+          accountIds: arrayUnion(docRef.id)
+        });
+      } else {
+        console.warn(`User ${userId} not found, skipping accountIds update`);
+      }
+    }
     await batch.commit();
     
     return docRef.id;
@@ -304,14 +313,14 @@ export const acceptAccountInvite = async (inviteId: string, userId: string): Pro
     }
     
     const account = accountSnap.data() as Account;
-    const updatedOwnerIds = [...account.ownerIds, userId];
     
-    batch.update(accountRef, { ownerIds: updatedOwnerIds });
+    // Use arrayUnion to add userId to account ownerIds
+    batch.update(accountRef, { ownerIds: arrayUnion(userId) });
     
-    // Update user profile
+    // Update user profile using arrayUnion
     const userRef = doc(database, 'users', userId);
     batch.update(userRef, {
-      accountIds: [...([] as string[]), invite.accountId] // Will be merged
+      accountIds: arrayUnion(invite.accountId)
     });
     
     // Mark invite as accepted
