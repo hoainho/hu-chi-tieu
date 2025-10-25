@@ -16,7 +16,7 @@ import {
   Firestore
 } from 'firebase/firestore';
 import db from './firebase';
-import { Transaction, IncomeSource, Category, Asset, UserProfile, Account, SpendingSource } from '../types';
+import { Transaction, IncomeSource, Category, Asset, UserProfile, Account, SpendingSource, SavingsGoal, SavingsGoalTransaction } from '../types';
 import { User } from 'firebase/auth';
 import { updateEnvelopeSpending } from './accountService';
 
@@ -298,6 +298,53 @@ export const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
   });
 };
 
+export const updateTransaction = async (transactionId: string, updates: Partial<Transaction>) => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    
+    // Get current transaction to handle envelope changes
+    const transactionRef = doc(database, 'transactions', transactionId);
+    const transactionSnap = await getDoc(transactionRef);
+    
+    if (!transactionSnap.exists()) {
+      throw new Error('Transaction not found');
+    }
+    
+    const oldTransaction = transactionSnap.data() as Transaction;
+    
+    // Update transaction
+    await updateDoc(transactionRef, updates);
+    
+    // Handle envelope spending updates if amount or envelope changed
+    if (updates.amount !== undefined || updates.envelope !== undefined) {
+      const oldAmount = oldTransaction.amount;
+      const newAmount = updates.amount !== undefined ? updates.amount : oldAmount;
+      const oldEnvelope = oldTransaction.envelope;
+      const newEnvelope = updates.envelope !== undefined ? updates.envelope : oldEnvelope;
+      const accountId = oldTransaction.accountId;
+      
+      try {
+        // If envelope changed, subtract from old and add to new
+        if (oldEnvelope !== newEnvelope) {
+          if (oldEnvelope && accountId) {
+            await updateEnvelopeSpending(accountId, oldEnvelope, oldAmount, false);
+          }
+          if (newEnvelope && accountId) {
+            await updateEnvelopeSpending(accountId, newEnvelope, newAmount, true);
+          }
+        } 
+        // If only amount changed, update the difference
+        else if (oldAmount !== newAmount && oldEnvelope && accountId) {
+          await updateEnvelopeSpending(accountId, oldEnvelope, oldAmount, false);
+          await updateEnvelopeSpending(accountId, oldEnvelope, newAmount, true);
+        }
+      } catch (error) {
+        console.warn('Failed to update envelope spending:', error);
+      }
+    }
+  });
+};
+
 export const deleteTransaction = async (transactionId: string) => {
   return handleFirestoreOperation(async () => {
     const database = ensureDb();
@@ -339,6 +386,14 @@ export const getIncomes = (userId: string, coupleId?: string): Promise<IncomeSou
 export const addIncome = (income: Omit<IncomeSource, 'id'>) => {
   const database = ensureDb();
   return addDoc(collection(database, 'incomes'), income);
+};
+
+export const updateIncome = async (incomeId: string, updates: Partial<IncomeSource>) => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    const incomeRef = doc(database, 'incomes', incomeId);
+    await updateDoc(incomeRef, updates);
+  });
 };
 
 export const deleteIncome = (incomeId: string) => {
@@ -400,4 +455,185 @@ export const updateCategory = (categoryId: string, newName: string) => {
 export const deleteCategory = (categoryId: string) => {
   const database = ensureDb();
   return deleteDoc(doc(database, 'categories', categoryId));
+};
+
+// ============= SAVINGS GOALS =============
+
+// Get all savings goals for a user
+export const getSavingsGoals = async (userId: string): Promise<SavingsGoal[]> => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    const goalsRef = collection(database, 'savingsGoals');
+    const q = query(
+      goalsRef,
+      where('ownerId', '==', userId)
+    );
+    const snapshot = await getDocs(q);
+    const goals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavingsGoal));
+    
+    // Sort by createdAt on client side to avoid composite index requirement
+    return goals.sort((a, b) => {
+      const aTime = a.createdAt?.toMillis() || 0;
+      const bTime = b.createdAt?.toMillis() || 0;
+      return bTime - aTime; // Descending order (newest first)
+    });
+  });
+};
+
+// Create a new savings goal
+export const createSavingsGoal = async (goalData: Omit<SavingsGoal, 'id'>) => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    const goalsRef = collection(database, 'savingsGoals');
+    return await addDoc(goalsRef, {
+      ...goalData,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    });
+  });
+};
+
+// Update a savings goal
+export const updateSavingsGoal = async (goalId: string, updates: Partial<SavingsGoal>) => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    const goalRef = doc(database, 'savingsGoals', goalId);
+    await updateDoc(goalRef, {
+      ...updates,
+      updatedAt: Timestamp.now()
+    });
+  });
+};
+
+// Delete a savings goal
+export const deleteSavingsGoal = async (goalId: string) => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    const goalRef = doc(database, 'savingsGoals', goalId);
+    await deleteDoc(goalRef);
+  });
+};
+
+// Deposit money to a savings goal
+export const depositToSavingsGoal = async (
+  goalId: string,
+  amount: number,
+  description?: string,
+  spendingSourceId?: string,
+  ownerId?: string
+) => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    
+    // Update goal's current amount
+    const goalRef = doc(database, 'savingsGoals', goalId);
+    const goalSnap = await getDoc(goalRef);
+    
+    if (!goalSnap.exists()) {
+      throw new Error('Savings goal not found');
+    }
+    
+    const currentGoal = goalSnap.data() as SavingsGoal;
+    const newAmount = currentGoal.currentAmount + amount;
+    
+    // Update goal amount and status
+    const updates: Partial<SavingsGoal> = {
+      currentAmount: newAmount,
+      updatedAt: Timestamp.now()
+    };
+    
+    // Check if goal is completed
+    if (newAmount >= currentGoal.targetAmount && currentGoal.status !== 'completed') {
+      updates.status = 'completed';
+    }
+    
+    await updateDoc(goalRef, updates);
+    
+    // Create transaction record
+    if (ownerId) {
+      const transactionsRef = collection(database, 'savingsGoalTransactions');
+      await addDoc(transactionsRef, {
+        goalId,
+        type: 'deposit',
+        amount,
+        description: description || `Nạp tiền vào quỹ`,
+        date: Timestamp.now(),
+        ownerId,
+        spendingSourceId
+      });
+    }
+    
+    return newAmount;
+  });
+};
+
+// Withdraw money from a savings goal
+export const withdrawFromSavingsGoal = async (
+  goalId: string,
+  amount: number,
+  description?: string,
+  spendingSourceId?: string,
+  ownerId?: string
+) => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    
+    // Update goal's current amount
+    const goalRef = doc(database, 'savingsGoals', goalId);
+    const goalSnap = await getDoc(goalRef);
+    
+    if (!goalSnap.exists()) {
+      throw new Error('Savings goal not found');
+    }
+    
+    const currentGoal = goalSnap.data() as SavingsGoal;
+    
+    if (currentGoal.currentAmount < amount) {
+      throw new Error('Insufficient balance in savings goal');
+    }
+    
+    const newAmount = currentGoal.currentAmount - amount;
+    
+    await updateDoc(goalRef, {
+      currentAmount: newAmount,
+      updatedAt: Timestamp.now()
+    });
+    
+    // Create transaction record
+    if (ownerId) {
+      const transactionsRef = collection(database, 'savingsGoalTransactions');
+      await addDoc(transactionsRef, {
+        goalId,
+        type: 'withdraw',
+        amount,
+        description: description || `Rút tiền từ quỹ`,
+        date: Timestamp.now(),
+        ownerId,
+        spendingSourceId
+      });
+    }
+    
+    return newAmount;
+  });
+};
+
+// Get transactions for a savings goal
+export const getSavingsGoalTransactions = async (goalId: string): Promise<SavingsGoalTransaction[]> => {
+  return handleFirestoreOperation(async () => {
+    const database = ensureDb();
+    const transactionsRef = collection(database, 'savingsGoalTransactions');
+    const q = query(
+      transactionsRef,
+      where('goalId', '==', goalId)
+    );
+    const snapshot = await getDocs(q);
+    const transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavingsGoalTransaction));
+    
+    // Sort by date on client side to avoid composite index requirement
+    return transactions.sort((a, b) => {
+      const aTime = a.date?.toMillis() || 0;
+      const bTime = b.date?.toMillis() || 0;
+      return bTime - aTime; // Descending order (newest first)
+    });
+  });
 };

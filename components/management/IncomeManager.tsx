@@ -3,6 +3,7 @@ import { useAppSelector, useAppDispatch } from '../../store';
 import toast from 'react-hot-toast';
 import { IncomeSource } from '../../types';
 import { addIncome, deleteIncome } from '../../services/firestoreService';
+import { updateIncomeData } from '../../store/slices/incomeSlice';
 import { Timestamp } from 'firebase/firestore';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
@@ -28,6 +29,10 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ incomes, onDataChange }) 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isShared, setIsShared] = useState(false);
   const [selectedSpendingSource, setSelectedSpendingSource] = useState('');
+  
+  // Edit states
+  const [editingIncome, setEditingIncome] = useState<IncomeSource | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   // Load spending sources
   useEffect(() => {
@@ -96,25 +101,109 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ incomes, onDataChange }) 
     }
   };
 
+  const handleEditClick = (income: IncomeSource) => {
+    setEditingIncome(income);
+    setIsEditing(true);
+    const incomeDate = (income.date as any)?.toDate ? (income.date as any).toDate() : new Date(income.date);
+    setName(income.name);
+    setAmount(income.amount.toString());
+    setDate(incomeDate.toISOString().split('T')[0]);
+    setIsShared(income.type === 'shared');
+    if (income.spendingSourceId) setSelectedSpendingSource(income.spendingSourceId);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingIncome(null);
+    setIsEditing(false);
+    setName('');
+    setAmount('');
+    setDate(new Date().toISOString().split('T')[0]);
+    setIsShared(false);
+    setSelectedSpendingSource('');
+  };
+
+  const handleUpdateIncome = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile || !editingIncome || !name || !amount || !date) {
+      toast.error('Vui lòng điền đầy đủ thông tin.');
+      return;
+    }
+    
+    setIsSubmitting(true);
+    const amountValue = parseFloat(amount);
+    
+    const updates: Partial<IncomeSource> = {
+      name,
+      amount: amountValue,
+      date: Timestamp.fromDate(new Date(date)),
+      type: isShared && profile.coupleId ? 'shared' : 'private',
+      spendingSourceId: selectedSpendingSource,
+    };
+
+    try {
+      await dispatch(updateIncomeData({ id: editingIncome.id, updates })).unwrap();
+      
+      toast.success('Cập nhật thu nhập thành công!');
+      handleCancelEdit();
+      onDataChange();
+    } catch (error: any) {
+      toast.error(error || 'Không thể cập nhật thu nhập. Vui lòng thử lại.');
+      console.error(error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!profile) return;
-     if (window.confirm('Bạn có chắc chắn muốn xóa nguồn thu nhập này không?')) {
-        try {
-            await deleteIncome(id);
-            toast.success('Đã xóa thu nhập.');
-            onDataChange();
-        } catch (error) {
-            toast.error('Xóa thu nhập thất bại.');
-            console.error(error);
+    if (window.confirm('Bạn có chắc chắn muốn xóa nguồn thu nhập này không?')) {
+      try {
+        // Find the income to get spending source info before deleting
+        const incomeToDelete = incomes.find(i => i.id === id);
+        
+        // Delete the income
+        await deleteIncome(id);
+        
+        // Subtract money from spending source if it was tracked (reverse the income)
+        if (incomeToDelete?.spendingSourceId && incomeToDelete?.amount) {
+          try {
+            await dispatch(updateBalance({
+              spendingSourceId: incomeToDelete.spendingSourceId,
+              amount: incomeToDelete.amount,
+              operation: 'subtract', // Subtract money back (reverse income)
+              description: `Hoàn trả từ thu nhập đã xóa: ${incomeToDelete.name}`
+            }));
+          } catch (balanceError) {
+            console.warn('Failed to reverse income from spending source:', balanceError);
+            // Don't fail the whole operation if reversal fails
+          }
         }
+        
+        toast.success('Đã xóa thu nhập và điều chỉnh số dư nguồn tiền.');
+        onDataChange();
+      } catch (error) {
+        toast.error('Xóa thu nhập thất bại.');
+        console.error(error);
+      }
     }
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <Card className="lg:col-span-1">
-        <h2 className="text-lg font-semibold mb-4">Thêm thu nhập mới</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">{isEditing ? 'Sửa thu nhập' : 'Thêm thu nhập mới'}</h2>
+          {isEditing && (
+            <button
+              type="button"
+              onClick={handleCancelEdit}
+              className="text-sm text-slate-600 hover:text-slate-800"
+            >
+              <i className="fas fa-times mr-1"></i>Hủy
+            </button>
+          )}
+        </div>
+        <form onSubmit={isEditing ? handleUpdateIncome : handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700">Tên nguồn thu</label>
             <Input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Lương, Việc làm thêm" required />
@@ -161,8 +250,8 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ incomes, onDataChange }) 
             </div>
           )}
 
-          <Button type="submit" disabled={isSubmitting || spendingSources.length === 0} className="w-full">
-            {isSubmitting ? 'Đang thêm...' : 'Thêm thu nhập'}
+          <Button type="submit" disabled={isSubmitting || (!isEditing && spendingSources.length === 0)} className="w-full">
+            {isSubmitting ? (isEditing ? 'Đang cập nhật...' : 'Đang thêm...') : (isEditing ? 'Cập nhật thu nhập' : 'Thêm thu nhập')}
           </Button>
         </form>
       </Card>
@@ -191,7 +280,22 @@ const IncomeManager: React.FC<IncomeManagerProps> = ({ incomes, onDataChange }) 
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 text-right">+{formatCurrency(i.amount)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     {i.ownerId === profile?.uid && (
-                        <button onClick={() => handleDelete(i.id)} className="text-red-600 hover:text-red-900"><i className="fas fa-trash"></i></button>
+                      <div className="flex items-center justify-end gap-3">
+                        <button 
+                          onClick={() => handleEditClick(i)} 
+                          className="text-blue-600 hover:text-blue-900 transition-colors duration-200 hover:scale-110 transform"
+                          title="Sửa"
+                        >
+                          <i className="fas fa-edit"></i>
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(i.id)} 
+                          className="text-red-600 hover:text-red-900 transition-colors duration-200 hover:scale-110 transform"
+                          title="Xóa"
+                        >
+                          <i className="fas fa-trash"></i>
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>

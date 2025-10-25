@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { Transaction } from '../../types';
-import { getTransactions, addTransaction, deleteTransaction } from '../../services/firestoreService';
+import { getTransactions, addTransaction, updateTransaction, deleteTransaction } from '../../services/firestoreService';
 
 interface TransactionState {
   transactions: Transaction[];
@@ -35,6 +35,18 @@ export const createTransaction = createAsyncThunk(
       return { ...transactionData, id: docRef.id } as Transaction;
     } catch (error: any) {
       return rejectWithValue(error.message || 'Không thể tạo giao dịch');
+    }
+  }
+);
+
+export const updateTransactionData = createAsyncThunk(
+  'transaction/updateTransaction',
+  async ({ id, updates }: { id: string; updates: Partial<Transaction> }, { rejectWithValue }) => {
+    try {
+      await updateTransaction(id, updates);
+      return { id, updates };
+    } catch (error: any) {
+      return rejectWithValue(error.message || 'Không thể cập nhật giao dịch');
     }
   }
 );
@@ -84,6 +96,17 @@ const transactionSlice = createSlice({
         state.transactions.push(action.payload);
       })
       .addCase(createTransaction.rejected, (state, action) => {
+        state.error = action.payload as string;
+      })
+      // Update transaction
+      .addCase(updateTransactionData.fulfilled, (state, action) => {
+        const { id, updates } = action.payload;
+        const index = state.transactions.findIndex(t => t.id === id);
+        if (index !== -1) {
+          state.transactions[index] = { ...state.transactions[index], ...updates };
+        }
+      })
+      .addCase(updateTransactionData.rejected, (state, action) => {
         state.error = action.payload as string;
       })
       // Remove transaction

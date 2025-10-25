@@ -11,6 +11,7 @@ import InvestmentPage from './components/assets/InvestmentPage';
 import EnhancedTransactionForm from './components/transactions/EnhancedTransactionForm';
 import EnvelopeManager from './components/envelopes/EnvelopeManager';
 import SpendingSourceManager from './components/management/SpendingSourceManager';
+import SavingsGoalsPage from './components/savings/SavingsGoalsPage';
 import Layout from './components/layout/Layout';
 import CouplePage from './components/couple/CouplePage';
 import { AuthContext } from './context/AuthContext';
@@ -106,6 +107,7 @@ const App: React.FC = () => {
                                         <Route path="/investments" element={<InvestmentPage />} />
                                         <Route path="/envelopes" element={<EnvelopeManager />} />
                                         <Route path="/spending-sources" element={<SpendingSourceManager />} />
+                                        <Route path="/savings-goals" element={<SavingsGoalsPage />} />
                                         <Route path="/couple" element={<CouplePage />} />
                                         <Route path="*" element={<Navigate to="/dashboard" />} />
                                     </Routes>

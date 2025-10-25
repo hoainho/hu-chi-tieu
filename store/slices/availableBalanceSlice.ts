@@ -99,6 +99,46 @@ export const deductInvestmentFromBalance = createAsyncThunk(
   }
 );
 
+export const deductSavingsFromBalance = createAsyncThunk(
+  'availableBalance/deductSavings',
+  async ({ 
+    userId, 
+    amount, 
+    description, 
+    sourceId, 
+    coupleId 
+  }: { 
+    userId: string; 
+    amount: number; 
+    description: string; 
+    sourceId: string; 
+    coupleId?: string; 
+  }) => {
+    await availableBalanceService.deductSavings(userId, amount, description, sourceId, coupleId);
+    return await availableBalanceService.getCurrentBalance(userId, coupleId);
+  }
+);
+
+export const addSavingsWithdrawal = createAsyncThunk(
+  'availableBalance/addSavingsWithdrawal',
+  async ({ 
+    userId, 
+    amount, 
+    description, 
+    sourceId, 
+    coupleId 
+  }: { 
+    userId: string; 
+    amount: number; 
+    description: string; 
+    sourceId: string; 
+    coupleId?: string; 
+  }) => {
+    await availableBalanceService.addSavingsWithdrawal(userId, amount, description, sourceId, coupleId);
+    return await availableBalanceService.getCurrentBalance(userId, coupleId);
+  }
+);
+
 const availableBalanceSlice = createSlice({
   name: 'availableBalance',
   initialState,
@@ -176,6 +216,34 @@ const availableBalanceSlice = createSlice({
       .addCase(deductInvestmentFromBalance.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || 'Failed to deduct investment';
+      })
+      
+      // Deduct savings
+      .addCase(deductSavingsFromBalance.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(deductSavingsFromBalance.fulfilled, (state, action) => {
+        state.loading = false;
+        state.currentBalance = action.payload;
+      })
+      .addCase(deductSavingsFromBalance.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to deduct savings';
+      })
+      
+      // Add savings withdrawal
+      .addCase(addSavingsWithdrawal.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(addSavingsWithdrawal.fulfilled, (state, action) => {
+        state.loading = false;
+        state.currentBalance = action.payload;
+      })
+      .addCase(addSavingsWithdrawal.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to add savings withdrawal';
       });
   },
 });

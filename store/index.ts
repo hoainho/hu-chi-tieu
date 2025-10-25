@@ -8,6 +8,7 @@ import investmentReducer from './slices/investmentSlice';
 import budgetReducer from './slices/budgetSlice';
 import availableBalanceReducer from './slices/availableBalanceSlice';
 import spendingSourceReducer from './slices/spendingSourceSlice';
+import savingsGoalReducer from './slices/savingsGoalSlice';
 
 export const store = configureStore({
   reducer: {
@@ -19,6 +20,7 @@ export const store = configureStore({
     budget: budgetReducer,
     availableBalance: availableBalanceReducer,
     spendingSource: spendingSourceReducer,
+    savingsGoal: savingsGoalReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
@@ -35,9 +37,11 @@ export const store = configureStore({
           'income/createIncome/fulfilled',
           'spendingSource/fetchSpendingSources/fulfilled',
           'spendingSource/createSpendingSource/fulfilled',
-          'spendingSource/updateBalance/fulfilled'
+          'spendingSource/updateBalance/fulfilled',
+          'savingsGoal/fetchGoals/fulfilled',
+          'savingsGoal/createGoal/fulfilled'
         ],
-        ignoredActionsPaths: ['payload.createdAt', 'payload.date', 'payload.lastLoginAt'],
+        ignoredActionsPaths: ['payload.createdAt', 'payload.date', 'payload.lastLoginAt', 'payload.deadline', 'payload.updatedAt'],
         ignoredPaths: [
           'register', 
           'rehydrate',
@@ -47,7 +51,10 @@ export const store = configureStore({
           'transaction.transactions.date',
           'income.incomes.date',
           'spendingSource.spendingSources.createdAt',
-          'spendingSource.spendingSources.updatedAt'
+          'spendingSource.spendingSources.updatedAt',
+          'savingsGoal.goals.createdAt',
+          'savingsGoal.goals.updatedAt',
+          'savingsGoal.goals.deadline'
         ],
       },
     }),

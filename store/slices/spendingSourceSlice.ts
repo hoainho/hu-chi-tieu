@@ -108,7 +108,13 @@ const spendingSourceSlice = createSlice({
       })
       .addCase(fetchSpendingSources.fulfilled, (state, action) => {
         state.loading = false;
-        state.spendingSources = action.payload;
+        // Convert Firestore Timestamps to ISO strings
+        const spendingSources = action.payload.map(source => ({
+          ...source,
+          createdAt: (source.createdAt as any)?.toDate ? (source.createdAt as any).toDate().toISOString() : source.createdAt,
+          updatedAt: (source.updatedAt as any)?.toDate ? (source.updatedAt as any).toDate().toISOString() : source.updatedAt
+        }));
+        state.spendingSources = spendingSources;
       })
       .addCase(fetchSpendingSources.rejected, (state, action) => {
         state.loading = false;
@@ -122,7 +128,13 @@ const spendingSourceSlice = createSlice({
       })
       .addCase(createSpendingSource.fulfilled, (state, action) => {
         state.loading = false;
-        state.spendingSources.unshift(action.payload);
+        // Convert Firestore Timestamps to ISO strings
+        const newSource = {
+          ...action.payload,
+          createdAt: (action.payload.createdAt as any)?.toDate ? (action.payload.createdAt as any).toDate().toISOString() : action.payload.createdAt,
+          updatedAt: (action.payload.updatedAt as any)?.toDate ? (action.payload.updatedAt as any).toDate().toISOString() : action.payload.updatedAt
+        };
+        state.spendingSources.unshift(newSource);
       })
       .addCase(createSpendingSource.rejected, (state, action) => {
         state.loading = false;

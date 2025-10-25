@@ -51,6 +51,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <i className="fas fa-wallet w-6"></i>
                 <span>Nguồn Chi Tiêu</span>
             </NavLink>
+            <NavLink to="/savings-goals" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}>
+                <i className="fas fa-piggy-bank w-6"></i>
+                <span>Quỹ Tiết Kiệm</span>
+            </NavLink>
              <NavLink to="/assets" className={({ isActive }) => `${navLinkClasses} ${isActive ? activeNavLinkClasses : ''}`}>
                 <i className="fas fa-coins w-6"></i>
                 <span>Tài sản</span>

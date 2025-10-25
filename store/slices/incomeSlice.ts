@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { IncomeSource } from '../../types';
-import { getIncomes, addIncome, deleteIncome } from '../../services/firestoreService';
+import { getIncomes, addIncome, updateIncome, deleteIncome } from '../../services/firestoreService';
 
 interface IncomeState {
   incomes: IncomeSource[];
@@ -35,6 +35,18 @@ export const createIncome = createAsyncThunk(
       return { ...incomeData, id: docRef.id } as IncomeSource;
     } catch (error: any) {
       return rejectWithValue(error.message || 'Không thể tạo thu nhập');
+    }
+  }
+);
+
+export const updateIncomeData = createAsyncThunk(
+  'income/updateIncome',
+  async ({ id, updates }: { id: string; updates: Partial<IncomeSource> }, { rejectWithValue }) => {
+    try {
+      await updateIncome(id, updates);
+      return { id, updates };
+    } catch (error: any) {
+      return rejectWithValue(error.message || 'Không thể cập nhật thu nhập');
     }
   }
 );
@@ -84,6 +96,17 @@ const incomeSlice = createSlice({
         state.incomes.push(action.payload);
       })
       .addCase(createIncome.rejected, (state, action) => {
+        state.error = action.payload as string;
+      })
+      // Update income
+      .addCase(updateIncomeData.fulfilled, (state, action) => {
+        const { id, updates } = action.payload;
+        const index = state.incomes.findIndex(i => i.id === id);
+        if (index !== -1) {
+          state.incomes[index] = { ...state.incomes[index], ...updates };
+        }
+      })
+      .addCase(updateIncomeData.rejected, (state, action) => {
         state.error = action.payload as string;
       })
       // Remove income

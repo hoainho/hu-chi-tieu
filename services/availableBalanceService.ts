@@ -21,6 +21,7 @@ export interface AvailableBalanceRecord {
   incomeAdded: number;
   spendingDeducted: number;
   investmentDeducted: number;
+  savingsDeducted: number; // Money deposited to savings goals
   netChange: number;
   updatedAt: Timestamp;
   createdAt: Timestamp;
@@ -30,10 +31,10 @@ export interface AvailableBalanceTransaction {
   id?: string;
   userId: string;
   coupleId?: string;
-  type: 'income' | 'spending' | 'investment';
-  amount: number; // Positive for income, negative for spending/investment
+  type: 'income' | 'spending' | 'investment' | 'savings';
+  amount: number; // Positive for income, negative for spending/investment/savings
   description: string;
-  sourceId: string; // ID of the income/transaction/investment that caused this
+  sourceId: string; // ID of the income/transaction/investment/savings that caused this
   balanceBefore: number;
   balanceAfter: number;
   timestamp: Timestamp;
@@ -175,12 +176,75 @@ class AvailableBalanceService {
   }
 
   /**
+   * Deduct savings goal deposit from available balance
+   */
+  async deductSavings(
+    userId: string, 
+    amount: number, 
+    description: string, 
+    sourceId: string,
+    coupleId?: string
+  ): Promise<void> {
+    try {
+      const currentBalance = await this.getCurrentBalance(userId, coupleId);
+      const newBalance = currentBalance - amount;
+      
+      await this.updateBalance(userId, -amount, 'savings', coupleId);
+      await this.recordTransaction(
+        userId, 
+        'savings', 
+        -amount, 
+        description, 
+        sourceId, 
+        currentBalance, 
+        newBalance,
+        coupleId
+      );
+    } catch (error) {
+      console.error('Error deducting savings:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add back money when withdrawing from savings goal
+   */
+  async addSavingsWithdrawal(
+    userId: string, 
+    amount: number, 
+    description: string, 
+    sourceId: string,
+    coupleId?: string
+  ): Promise<void> {
+    try {
+      const currentBalance = await this.getCurrentBalance(userId, coupleId);
+      const newBalance = currentBalance + amount;
+      
+      // Add back to balance (reverse the savings deduction)
+      await this.updateBalance(userId, amount, 'savings', coupleId);
+      await this.recordTransaction(
+        userId, 
+        'savings', 
+        amount, 
+        description, 
+        sourceId, 
+        currentBalance, 
+        newBalance,
+        coupleId
+      );
+    } catch (error) {
+      console.error('Error adding savings withdrawal:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update monthly balance record
    */
   private async updateBalance(
     userId: string, 
     amount: number, 
-    type: 'income' | 'spending' | 'investment',
+    type: 'income' | 'spending' | 'investment' | 'savings',
     coupleId?: string
   ): Promise<void> {
     const currentMonth = new Date().toISOString().slice(0, 7);
@@ -203,11 +267,14 @@ class AvailableBalanceService {
         updates.spendingDeducted = (data.spendingDeducted || 0) + Math.abs(amount);
       } else if (type === 'investment') {
         updates.investmentDeducted = (data.investmentDeducted || 0) + Math.abs(amount);
+      } else if (type === 'savings') {
+        updates.savingsDeducted = (data.savingsDeducted || 0) + Math.abs(amount);
       }
       
       updates.netChange = (updates.incomeAdded || data.incomeAdded || 0) - 
                          (updates.spendingDeducted || data.spendingDeducted || 0) - 
-                         (updates.investmentDeducted || data.investmentDeducted || 0);
+                         (updates.investmentDeducted || data.investmentDeducted || 0) -
+                         (updates.savingsDeducted || data.savingsDeducted || 0);
       
       await updateDoc(docRef, updates);
     } else {
@@ -219,6 +286,7 @@ class AvailableBalanceService {
         incomeAdded: type === 'income' ? amount : 0,
         spendingDeducted: type === 'spending' ? Math.abs(amount) : 0,
         investmentDeducted: type === 'investment' ? Math.abs(amount) : 0,
+        savingsDeducted: type === 'savings' ? Math.abs(amount) : 0,
         netChange: amount,
         updatedAt: now,
         createdAt: now,
@@ -234,7 +302,7 @@ class AvailableBalanceService {
    */
   private async recordTransaction(
     userId: string,
-    type: 'income' | 'spending' | 'investment',
+    type: 'income' | 'spending' | 'investment' | 'savings',
     amount: number,
     description: string,
     sourceId: string,

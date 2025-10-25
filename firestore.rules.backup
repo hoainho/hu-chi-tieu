@@ -1,0 +1,425 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(ownerId) {
+      return request.auth.uid == ownerId;
+    }
+    
+    function isAccountMember(accountId) {
+      return request.auth.uid in get(/databases/$(database)/documents/accounts/$(accountId)).data.ownerIds;
+    }
+    
+    function hasPartnerAccess(coupleId) {
+      return coupleId != null && request.auth.uid in get(/databases/$(database)/documents/couples/$(coupleId)).data.members;
+    }
+    
+    function createAuditLog(action, resourceType, resourceId) {
+      return true; // Simplified for now - would create audit document
+    }
+    
+    // Users can read/write their own profile
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && isOwner(userId);
+      
+      // Log profile changes
+      allow write: if isAuthenticated() && isOwner(userId) && 
+        createAuditLog('profile_updated', 'user', userId);
+      
+      // Available balance subcollections
+      match /availableBalance/{month} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      match /availableBalanceTransactions/{transactionId} {
+        allow read, write: if isAuthenticated() && isOwner(userId);
+      }
+    }
+    
+    // Account management with proper access control
+    match /accounts/{accountId} {
+      // Allow read if user is in the ownerIds array (avoid circular dependency)
+      allow read: if isAuthenticated() && 
+        request.auth.uid in resource.data.ownerIds;
+      
+      allow create: if isAuthenticated() && 
+        request.auth.uid in request.resource.data.ownerIds;
+      
+      allow update: if isAuthenticated() && 
+        request.auth.uid in resource.data.ownerIds &&
+        createAuditLog('account_updated', 'account', accountId);
+      
+      allow delete: if isAuthenticated() && 
+        request.auth.uid in resource.data.ownerIds &&
+        createAuditLog('account_deleted', 'account', accountId);
+    }
+    
+    // Transaction access with account validation
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.ownerId) ||
+        isAccountMember(resource.data.accountId) ||
+        hasPartnerAccess(resource.data.coupleId)
+      );
+      
+      allow create: if isAuthenticated() &&
+        isOwner(request.resource.data.ownerId) &&
+        isAccountMember(request.resource.data.accountId) &&
+        validateEnvelopeBudget(request.resource.data) &&
+        createAuditLog('transaction_created', 'transaction', transactionId);
+      
+      allow create: if request.auth != null && 
+        request.resource.data.ownerId == request.auth.uid &&
+        validateTransactionData(request.resource.data);
+      
+      allow update: if isAuthenticated() && (
+        isOwner(resource.data.ownerId) ||
+        hasPartnerAccess(resource.data.coupleId)
+      ) && validateTransactionData(request.resource.data);
+      
+      allow delete: if isAuthenticated() && (
+        isOwner(resource.data.ownerId) ||
+        hasPartnerAccess(resource.data.coupleId)
+      );
+    }
+    
+    // ============= INVESTMENT MANAGEMENT =============
+    
+    // Investment assets with enhanced security
+    match /investments/{investmentId} {
+      allow read: if request.auth != null && canAccessInvestment(resource.data);
+      
+      allow write: if request.auth != null && 
+        canAccessInvestment(resource.data) &&
+        validateInvestmentData(request.resource.data);
+      
+      allow create: if request.auth != null && 
+        request.resource.data.ownerId == request.auth.uid &&
+        validateInvestmentData(request.resource.data);
+    }
+    
+    // ============= BUDGET & ENVELOPE MANAGEMENT =============
+    
+    // Budget envelopes with account-level access
+    match /budgets/{budgetId} {
+      allow read, write: if request.auth != null && 
+        canAccessAccount(resource.data.accountId);
+      
+      allow create: if request.auth != null && 
+        canAccessAccount(request.resource.data.accountId) &&
+        validateBudgetData(request.resource.data);
+    }
+    
+    // ============= INCOME SOURCES =============
+    
+    // Income sources with couple sharing
+    match /incomes/{incomeId} {
+      allow read: if request.auth != null && canAccessIncome(resource.data);
+      
+      allow create: if request.auth != null && 
+        request.resource.data.ownerId == request.auth.uid &&
+        validateIncomeData(request.resource.data);
+      
+      allow update: if request.auth != null && 
+        canAccessIncome(resource.data) &&
+        validateIncomeData(request.resource.data);
+      
+      allow delete: if request.auth != null && 
+        canAccessIncome(resource.data);
+    }
+    
+    // ============= CATEGORIES =============
+    
+    // Personal categories (user-specific)
+    match /categories/{categoryId} {
+      allow read, write: if request.auth != null && 
+        resource.data.ownerId == request.auth.uid;
+      
+      allow create: if request.auth != null && 
+        request.resource.data.ownerId == request.auth.uid;
+    }
+    
+    // ============= SAVINGS GOALS =============
+    
+    // Savings goals with couple sharing
+    match /savingsGoals/{goalId} {
+      allow read: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        (resource.data.coupleId != null && hasPartnerAccess(resource.data.coupleId))
+      );
+      
+      allow create: if request.auth != null && 
+        request.resource.data.ownerId == request.auth.uid;
+      
+      allow update: if request.auth != null && 
+        resource.data.ownerId == request.auth.uid;
+      
+      allow delete: if request.auth != null && 
+        resource.data.ownerId == request.auth.uid;
+    }
+    
+    // Savings goal transactions
+    match /savingsGoalTransactions/{transactionId} {
+      allow read: if request.auth != null && 
+        resource.data.ownerId == request.auth.uid;
+      
+      allow create: if request.auth != null && 
+        request.resource.data.ownerId == request.auth.uid;
+      
+      allow delete: if request.auth != null && 
+        resource.data.ownerId == request.auth.uid;
+    }
+    
+    // ============= SPENDING SOURCES =============
+    
+    // Spending sources with couple sharing
+    match /spendingSources/{sourceId} {
+      allow read: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        (resource.data.coupleId != null && hasPartnerAccess(resource.data.coupleId))
+      );
+      
+      allow create: if request.auth != null && 
+        request.resource.data.ownerId == request.auth.uid;
+      
+      allow update: if request.auth != null && 
+        resource.data.ownerId == request.auth.uid;
+      
+      allow delete: if request.auth != null && 
+        resource.data.ownerId == request.auth.uid;
+    }
+    
+    // ============= ASSETS =============
+    
+    // Assets with couple sharing
+    match /assets/{assetId} {
+      allow read: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        (resource.data.coupleId != null && hasPartnerAccess(resource.data.coupleId))
+      );
+      
+      allow create: if request.auth != null && 
+        request.resource.data.ownerId == request.auth.uid;
+      
+      allow update: if request.auth != null && 
+        resource.data.ownerId == request.auth.uid;
+      
+      allow delete: if request.auth != null && 
+        resource.data.ownerId == request.auth.uid;
+    }
+    
+    // ============= MARKET DATA & RATES =============
+    
+    // Public read access to exchange rates and market data
+    match /rates/{rateId} {
+      allow read: if true;
+      allow write: if false; // Only Cloud Functions can write
+    }
+    
+    // Gold price data (public read)
+    match /goldPrices/{priceId} {
+      allow read: if true;
+      allow write: if false; // Only Cloud Functions can write
+    }
+    
+    // Gold price history (public read)
+    match /goldPriceHistory/{historyId} {
+      allow read: if true;
+      allow write: if false; // Only Cloud Functions can write
+    }
+    
+    // ============= AUDIT & LOGGING =============
+    
+    // Audit logs (read-only for users, write-only for system)
+    match /auditLogs/{logId} {
+      allow read: if request.auth != null && 
+        (resource.data.userId == request.auth.uid || 
+         resource.data.affectedUserIds != null && 
+         request.auth.uid in resource.data.affectedUserIds);
+      
+      allow write: if false; // Only system can write audit logs
+    }
+    
+    // Error logs (admin only)
+    match /errorLogs/{errorId} {
+      allow read, write: if request.auth != null && 
+        isAdmin(request.auth.uid);
+    }
+    
+    // System status (public read for app health)
+    match /systemStatus/{statusId} {
+      allow read: if true;
+      allow write: if false; // Only Cloud Functions can write
+    }
+    
+    // ============= HELPER FUNCTIONS =============
+    
+    // Check if user can access transaction
+    function canAccessTransaction(transactionData) {
+      return transactionData.ownerId == request.auth.uid ||
+        (transactionData.coupleId != null && 
+         isPartnerOf(transactionData.ownerId)) ||
+        canAccessAccount(transactionData.accountId);
+    }
+    
+    // Check if user can access investment
+    function canAccessInvestment(investmentData) {
+      return investmentData.ownerId == request.auth.uid ||
+        (investmentData.coupleId != null && 
+         isPartnerOf(investmentData.ownerId)) ||
+        canAccessAccount(investmentData.accountId);
+    }
+    
+    // Check if user can access income
+    function canAccessIncome(incomeData) {
+      return incomeData.ownerId == request.auth.uid ||
+        (incomeData.coupleId != null && 
+         isPartnerOf(incomeData.ownerId));
+    }
+    
+    // Check if user can access account
+    function canAccessAccount(accountId) {
+      return exists(/databases/$(database)/documents/accounts/$(accountId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/accounts/$(accountId)).data.ownerIds;
+    }
+    
+    // Check if current user is partner of given user
+    function isPartnerOf(userId) {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.partnerId == userId;
+    }
+    
+    // Check if user is admin
+    function isAdmin(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)) &&
+        get(/databases/$(database)/documents/users/$(userId)).data.role == 'admin';
+    }
+    
+    // ============= VALIDATION FUNCTIONS =============
+    
+    // Validate account data
+    function validateAccountData(data) {
+      return data.keys().hasAll(['name', 'type', 'ownerIds', 'balance', 'currency']) &&
+        data.name is string && data.name.size() > 0 &&
+        data.type in ['personal', 'joint', 'business'] &&
+        data.ownerIds is list && data.ownerIds.size() > 0 &&
+        data.balance is number &&
+        data.currency is string;
+    }
+    
+    // Validate transaction data
+    function validateTransactionData(data) {
+      return data.keys().hasAll(['amount', 'category', 'description', 'date', 'ownerId', 'accountId']) &&
+        data.amount is number &&
+        data.category is string && data.category.size() > 0 &&
+        data.description is string &&
+        data.date is timestamp &&
+        data.ownerId is string &&
+        data.accountId is string &&
+        // Validate amount is not zero
+        data.amount != 0 &&
+        // Validate encrypted note if present
+        (!data.keys().hasAny(['encryptedNote']) || data.encryptedNote is string);
+    }
+    
+    // Validate investment data
+    function validateInvestmentData(data) {
+      return data.keys().hasAll(['type', 'symbol', 'name', 'quantity', 'purchasePrice', 'ownerId']) &&
+        data.type in ['crypto', 'stock', 'gold', 'fund', 'other'] &&
+        data.symbol is string && data.symbol.size() > 0 &&
+        data.name is string && data.name.size() > 0 &&
+        data.quantity is number && data.quantity > 0 &&
+        data.purchasePrice is number && data.purchasePrice > 0 &&
+        data.ownerId is string;
+    }
+    
+    // Validate budget data
+    function validateBudgetData(data) {
+      return data.keys().hasAll(['accountId', 'month', 'categories', 'totalAllocated']) &&
+        data.accountId is string &&
+        data.month is string && data.month.matches('^[0-9]{4}-[0-9]{2}$') &&
+        data.categories is map &&
+        data.totalAllocated is number && data.totalAllocated >= 0;
+    }
+    
+    // Validate income data
+    function validateIncomeData(data) {
+      return data.keys().hasAll(['name', 'amount', 'date', 'ownerId']) &&
+        data.name is string && data.name.size() > 0 &&
+        data.amount is number && data.amount > 0 &&
+        data.date is timestamp &&
+        data.ownerId is string;
+    }
+    
+    // Account invitations
+    match /accountInvites/{inviteId} {
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.inviterUserId ||
+        request.auth.email == resource.data.inviteeEmail
+      );
+      
+      allow create: if isAuthenticated() && 
+        request.auth.uid == request.resource.data.inviterUserId;
+      
+      allow update: if isAuthenticated() && 
+        request.auth.email == resource.data.inviteeEmail &&
+        request.resource.data.status == 'accepted';
+      
+      allow delete: if isAuthenticated() && 
+        request.auth.uid == resource.data.inviterUserId;
+    }
+    
+    // Couple management (legacy - keeping for backward compatibility)
+    match /invites/{inviteId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    match /couples/{coupleId} {
+      allow read, write: if isAuthenticated() && 
+        request.auth.uid in resource.data.members;
+      
+      // Available balance subcollections for couples
+      match /availableBalance/{month} {
+        allow read, write: if isAuthenticated() && 
+          request.auth.uid in get(/databases/$(database)/documents/couples/$(coupleId)).data.members;
+      }
+      
+      match /availableBalanceTransactions/{transactionId} {
+        allow read, write: if isAuthenticated() && 
+          request.auth.uid in get(/databases/$(database)/documents/couples/$(coupleId)).data.members;
+      }
+    }
+    
+    // Audit logs - append only, read by owners
+    match /audit/{logId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId ||
+        request.auth.uid in resource.data.userIds
+      );
+      
+      allow create: if isAuthenticated();
+      allow update, delete: if false; // Audit logs are immutable
+    }
+    
+    // Helper function to validate envelope budget
+    function validateEnvelopeBudget(txnData) {
+      let account = get(/databases/$(database)/documents/accounts/$(txnData.accountId));
+      let envelope = account.data.envelopes[txnData.envelope];
+      
+      // Allow if envelope exists and has budget (warning will be shown in UI)
+      return envelope != null && envelope.allocated >= 0;
+    }
+    
+    // Rate limiting helper (simplified)
+    function checkRateLimit(userId, action) {
+      // In a real implementation, this would check recent actions
+      // For now, just return true
+      return true;
+    }
+  }
+}

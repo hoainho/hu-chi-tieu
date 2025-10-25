@@ -47,6 +47,7 @@ export interface Transaction {
   envelope: string; // Envelope ID
   date: Timestamp;
   accountId: string;
+  spendingSourceId?: string; // Link to spending source where money was deducted
   // Couple's Finance fields
   type: 'private' | 'shared';
   ownerId: string; // The user who created the transaction
@@ -91,6 +92,37 @@ export interface Category {
   id: string;
   name: string;
   ownerId: string; // User ID or Couple ID
+}
+
+// Savings Goal - Quỹ tiết kiệm mục tiêu
+export interface SavingsGoal {
+  id: string;
+  name: string; // e.g., "Quỹ du lịch Hội An", "Quỹ thất nghiệp"
+  description?: string;
+  targetAmount: number; // Số tiền mục tiêu (VND)
+  currentAmount: number; // Số tiền hiện tại đã tích lũy (VND)
+  monthlyContribution?: number; // Số tiền đóng góp mỗi tháng (optional)
+  category: 'travel' | 'emergency' | 'business' | 'education' | 'house' | 'other'; // Loại quỹ
+  deadline?: Timestamp; // Thời hạn mục tiêu (optional)
+  status: 'active' | 'completed' | 'paused'; // Trạng thái
+  // Couple's Finance fields
+  ownerType: 'private' | 'shared';
+  ownerId: string;
+  coupleId?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// Transaction for Savings Goal
+export interface SavingsGoalTransaction {
+  id: string;
+  goalId: string; // Link to SavingsGoal
+  type: 'deposit' | 'withdraw'; // Nạp tiền hoặc rút tiền
+  amount: number;
+  description?: string;
+  date: Timestamp;
+  ownerId: string;
+  spendingSourceId?: string; // Nguồn tiền nạp vào/rút ra
 }
 
 export type AssetType = 'savings' | 'stock' | 'crypto' | 'gold' | 'real_estate' | 'bond' | 'mutual_fund' | 'other';

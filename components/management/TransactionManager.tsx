@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { Transaction, Category, Account } from '../../types';
 import { useAppSelector, useAppDispatch } from '../../store';
 import { fetchAccounts } from '../../store/slices/accountSlice';
-import { createTransaction, removeTransaction } from '../../store/slices/transactionSlice';
+import { createTransaction, updateTransactionData, removeTransaction } from '../../store/slices/transactionSlice';
 import { fetchSpendingSources, updateBalance } from '../../store/slices/spendingSourceSlice';
 import { deductSpendingFromBalance } from '../../store/slices/availableBalanceSlice';
 import Card from '../ui/Card';
@@ -53,6 +53,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
   const [deleteModal, setDeleteModal] = useState<{isOpen: boolean, transactionId: string, transactionName: string}>({isOpen: false, transactionId: '', transactionName: ''});
   const [isDeleting, setIsDeleting] = useState(false);
   const [notificationModal, setNotificationModal] = useState<{isOpen: boolean, type: 'success' | 'error', title: string, message: string}>({isOpen: false, type: 'success', title: '', message: ''});
+  
+  // Edit states
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
   
   // Get default account (first account)
   const defaultAccount = accounts.length > 0 ? accounts[0] : null;
@@ -176,6 +180,7 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
       category,
       envelope: selectedEnvelope || '',
       accountId: defaultAccount.id,
+      spendingSourceId: selectedSpendingSource, // Save spending source ID for refund on delete
       date: Timestamp.fromDate(new Date(date)),
       type: isShared && profile.coupleId ? 'shared' : 'private',
       ownerId: profile.uid,
@@ -239,19 +244,108 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
     });
   };
 
+  const handleEditClick = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
+    setIsEditing(true);
+    const transactionDate = (transaction.date as any)?.toDate ? (transaction.date as any).toDate() : new Date(transaction.date);
+    setDescription(transaction.description);
+    setAmount(transaction.amount.toString());
+    setCategory(transaction.category);
+    setDate(transactionDate.toISOString().split('T')[0]);
+    setSelectedEnvelope(transaction.envelope);
+    setIsShared(transaction.type === 'shared');
+    if (transaction.paidBy) setPaidBy(transaction.paidBy);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTransaction(null);
+    setIsEditing(false);
+    setDescription('');
+    setAmount('');
+    if (categories.length > 0) setCategory(categories[0].name);
+    setDate(new Date().toISOString().split('T')[0]);
+    setIsShared(false);
+    setSelectedSpendingSource('');
+  };
+
+  const handleUpdateTransaction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile || !editingTransaction || !description || !amount || !date || !category) {
+      toast.error('Vui lòng điền đầy đủ thông tin.');
+      return;
+    }
+    
+    setIsSubmitting(true);
+    const amountValue = parseFloat(amount);
+    
+    const updates: Partial<Transaction> = {
+      description,
+      amount: amountValue,
+      originalAmount: amountValue,
+      category,
+      envelope: selectedEnvelope || '',
+      date: Timestamp.fromDate(new Date(date)),
+      type: isShared && profile.coupleId ? 'shared' : 'private',
+      ...(isShared && profile.coupleId && { paidBy }),
+    };
+
+    try {
+      await dispatch(updateTransactionData({ id: editingTransaction.id, updates })).unwrap();
+      
+      setNotificationModal({
+        isOpen: true,
+        type: 'success',
+        title: 'Cập nhật thành công!',
+        message: `Đã cập nhật giao dịch "${description}".`
+      });
+      
+      handleCancelEdit();
+      onDataChange();
+    } catch (error: any) {
+      setNotificationModal({
+        isOpen: true,
+        type: 'error',
+        title: 'Lỗi cập nhật!',
+        message: error || 'Không thể cập nhật giao dịch. Vui lòng thử lại.'
+      });
+      console.error(error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleDeleteConfirm = async () => {
     if (!profile || !deleteModal.transactionId) return;
     
     setIsDeleting(true);
     try {
+      // Find the transaction to get spending source info before deleting
+      const transactionToDelete = transactions.find(t => t.id === deleteModal.transactionId);
+      
+      // Delete the transaction
       await dispatch(removeTransaction({ transactionId: deleteModal.transactionId, userId: profile.uid })).unwrap();
+      
+      // Refund money to spending source if it was tracked
+      if (transactionToDelete?.spendingSourceId && transactionToDelete?.amount) {
+        try {
+          await dispatch(updateBalance({
+            spendingSourceId: transactionToDelete.spendingSourceId,
+            amount: transactionToDelete.amount,
+            operation: 'add', // Add money back (refund)
+            description: `Hoàn tiền từ giao dịch đã xóa: ${deleteModal.transactionName}`
+          }));
+        } catch (balanceError) {
+          console.warn('Failed to refund to spending source:', balanceError);
+          // Don't fail the whole operation if refund fails
+        }
+      }
       
       setDeleteModal({isOpen: false, transactionId: '', transactionName: ''});
       setNotificationModal({
         isOpen: true,
         type: 'success',
         title: 'Xóa thành công!',
-        message: `Đã xóa giao dịch "${deleteModal.transactionName}" khỏi hệ thống.`
+        message: `Đã xóa giao dịch "${deleteModal.transactionName}" và hoàn lại số tiền vào nguồn chi tiêu.`
       });
       
       onDataChange();
@@ -271,8 +365,19 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <Card className="lg:col-span-1">
-        <h2 className="text-lg font-semibold mb-4">Thêm chi tiêu mới</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">{isEditing ? 'Sửa chi tiêu' : 'Thêm chi tiêu mới'}</h2>
+          {isEditing && (
+            <button
+              type="button"
+              onClick={handleCancelEdit}
+              className="text-sm text-slate-600 hover:text-slate-800"
+            >
+              <i className="fas fa-times mr-1"></i>Hủy
+            </button>
+          )}
+        </div>
+        <form onSubmit={isEditing ? handleUpdateTransaction : handleSubmit} className="space-y-4">
           <div className="animate-fade-in animate-stagger-1">
             <label className="block text-sm font-medium text-slate-700">Mô tả</label>
             <Input type="text" value={description} onChange={(e) => setDescription(e.target.value)} required />
@@ -409,10 +514,10 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
           )}
           <Button 
             type="submit" 
-            disabled={isSubmitting || categories.length === 0 || !defaultAccount || !selectedEnvelope || !selectedSpendingSource || spendingSources.length === 0} 
+            disabled={isSubmitting || categories.length === 0 || !defaultAccount || !selectedEnvelope || (!isEditing && (!selectedSpendingSource || spendingSources.length === 0))} 
             className="w-full"
           >
-            {isSubmitting ? 'Đang thêm...' : 'Thêm chi tiêu'}
+            {isSubmitting ? (isEditing ? 'Đang cập nhật...' : 'Đang thêm...') : (isEditing ? 'Cập nhật chi tiêu' : 'Thêm chi tiêu')}
           </Button>
         </form>
       </Card>
@@ -504,12 +609,22 @@ const TransactionManager: React.FC<TransactionManagerProps> = ({ transactions, c
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-red-500 text-right">-{formatCurrency(t.amount)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     {t.ownerId === profile?.uid && (
+                      <div className="flex items-center justify-end gap-3">
+                        <button 
+                          onClick={() => handleEditClick(t)} 
+                          className="text-blue-600 hover:text-blue-900 transition-colors duration-200 hover:scale-110 transform"
+                          title="Sửa"
+                        >
+                          <i className="fas fa-edit"></i>
+                        </button>
                         <button 
                           onClick={() => handleDeleteClick(t.id, t.description)} 
                           className="text-red-600 hover:text-red-900 transition-colors duration-200 hover:scale-110 transform"
+                          title="Xóa"
                         >
                           <i className="fas fa-trash"></i>
                         </button>
+                      </div>
                     )}
                   </td>
                 </tr>
