@@ -466,6 +466,7 @@ const AssetsPage: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Loại</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Số lượng</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Cập nhật</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Vốn đầu tư</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Giá trị</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Hành động</th>
                 </tr>
@@ -512,7 +513,14 @@ const AssetsPage: React.FC = () => {
                         <span className="text-slate-400">-</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{a.date.toDate().toLocaleDateString()}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-semibold text-right">
+                      {/* Cost basis column */}
+                      {isMarketAsset(a) ? (
+                        <div>{formatCurrency(a.quantity * a.purchasePrice)}</div>
+                      ) : (
+                        <div>{formatCurrency(a.value)}</div>
+                      )}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-semibold text-right">
                       <div>{formatCurrency(getAssetValue(a))}</div>
                       {isMarketAsset(a) && a.marketValue && a.gainLoss !== undefined && (

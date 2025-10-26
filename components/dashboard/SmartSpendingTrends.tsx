@@ -2,23 +2,7 @@ import React, { useMemo } from 'react';
 import { useAppSelector } from '../../store';
 import { formatVietnameseCurrency } from '../../utils/vietnamCurrency';
 import { toDate } from '../../utils/dateHelpers';
-import {
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell
-} from 'recharts';
+import SmartSpendingTrendsChart from '../charts/SmartSpendingTrendsChart';
 
 interface SpendingInsight {
   type: 'warning' | 'success' | 'info' | 'danger';
@@ -237,6 +221,13 @@ const SmartSpendingTrends: React.FC = () => {
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#84CC16', '#F97316'];
 
+  const monthlyChartData = () => {
+    return spendingAnalysis.monthlyChartData.map(item => ({
+      date: item.month,
+      value: item.spending
+    }));
+  };
+  
   return (
     <div className="space-y-6" data-spending-trends>
       {/* Header với tổng quan */}
@@ -295,50 +286,24 @@ const SmartSpendingTrends: React.FC = () => {
         </div>
 
         {/* Xu hướng theo tháng */}
-        <div className="mb-6">
-          <h4 className="font-semibold text-gray-800 mb-3">Xu hướng 12 tháng</h4>
-          <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={spendingAnalysis.monthlyChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="month" stroke="#666" />
-              <YAxis stroke="#666" tickFormatter={(value) => formatVietnameseCurrency(value)} />
-              <Tooltip 
-                formatter={(value: number) => [formatVietnameseCurrency(value), 'Chi tiêu']}
-                labelFormatter={(label) => `Tháng: ${label}`}
-              />
-              <Area 
-                type="monotone" 
-                dataKey="spending" 
-                stroke="#EF4444" 
-                fill="url(#colorSpending)" 
-                strokeWidth={2}
-              />
-              <defs>
-                <linearGradient id="colorSpending" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#EF4444" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#EF4444" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        
       </div>
 
       {/* Category spending analysis */}
         {/* Top category spending */}
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h4 className="font-semibold text-gray-800 mb-4">Top danh mục chi tiêu</h4>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={spendingAnalysis.categoryChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="category" stroke="#666" />
-              <YAxis stroke="#666" tickFormatter={(value) => formatVietnameseCurrency(value)} />
-              <Tooltip 
-                formatter={(value: number) => [formatVietnameseCurrency(value), 'Chi tiêu']}
-              />
-              <Bar dataKey="amount" fill="#F59E0B" />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="h-64">
+            <SmartSpendingTrendsChart 
+              key="category-spending-chart"
+              data={spendingAnalysis.categoryChartData.map(item => ({
+                date: item.category,
+                value: item.amount
+              }))}
+              chartType="bar"
+              title="Phân tích chi tiêu theo danh mục"
+            />
+          </div>
           
           <div className="mt-4 space-y-2">
             {spendingAnalysis.categoryChartData.slice(0, 3).map((category, index) => (
@@ -356,17 +321,17 @@ const SmartSpendingTrends: React.FC = () => {
         {/* Weekday spending trends */}
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h4 className="font-semibold text-gray-800 mb-4">Thói quen theo ngày trong tuần</h4>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={spendingAnalysis.weekdayChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="day" stroke="#666" />
-              <YAxis stroke="#666" tickFormatter={(value) => formatVietnameseCurrency(value)} />
-              <Tooltip 
-                formatter={(value: number) => [formatVietnameseCurrency(value), 'Chi tiêu']}
-              />
-              <Bar dataKey="amount" fill="#8B5CF6" />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="h-64">
+            <SmartSpendingTrendsChart 
+              key="weekday-trend-chart"
+              data={spendingAnalysis.weekdayChartData.map(item => ({
+                date: item.day,
+                value: item.amount
+              }))}
+              chartType="mixed"
+              title="Thói quen chi tiêu theo ngày trong tuần"
+            />
+          </div>
           
           <div className="mt-4 text-center">
             <div className="text-sm text-gray-600">

@@ -7,6 +7,7 @@ import { fetchTransactions } from '../../store/slices/transactionSlice';
 import { fetchIncomes } from '../../store/slices/incomeSlice';
 import { useCurrencyRates } from '../../hooks/useCurrencyRates';
 import { useAssets } from '../../hooks/useAssets';
+import { useAssetSummary } from '../../hooks/useAssetSummary';
 import { calculateTotalBudget, getEnvelopeStatus } from '../../services/accountService';
 import marketDataService from '../../services/marketDataService';
 import { getVietnamStocks } from '../../services/vietnamStockService';
@@ -26,16 +27,15 @@ import CategorySpendingAnalysis from './CategorySpendingAnalysis';
 import YearEndSummary from './YearEndSummary';
 import YearEndDebugger from '../debug/YearEndDebugger';
 import PnLDisplay from '../ui/PnLDisplay';
+import ConsumptionTrendDashboard from './ConsumptionTrendDashboard';
 import { formatCurrency } from '../../utils/formatters';
 import { formatVietnameseCurrency, formatVietnameseNumber } from '../../utils/vietnamCurrency';
 import { toDate } from '../../utils/dateHelpers';
 import toast from 'react-hot-toast';
 import {
-  LineChart,
   Line,
   AreaChart,
   Area,
-  PieChart,
   Pie,
   Cell,
   ResponsiveContainer,
@@ -46,6 +46,8 @@ import {
   Legend
 } from 'recharts';
 import { ASSET_TYPES } from '@/constants/assets';
+import EnhancedDashboardCharts from '../charts/EnhancedDashboardCharts';
+import AssetBreakdown from './AssetBreakdown';
 
 const ModernDashboard: React.FC = () => {
   // Helper functions for stock and crypto names
@@ -75,6 +77,7 @@ const ModernDashboard: React.FC = () => {
   const { incomes } = useAppSelector(state => state.income);
   const { currentBalance: availableBalance, loading: balanceLoading } = useAppSelector(state => state.availableBalance);
   const { assets } = useAssets();
+  const { portfolioSummary: assetPortfolioSummary, loading: assetSummaryLoading } = useAssetSummary(assets);
   
   // Investment tracking state
   const [vietnamStocks, setVietnamStocks] = useState<any[]>([]);
@@ -725,6 +728,11 @@ const ModernDashboard: React.FC = () => {
           <div>
             <SmartSpendingTrends />
           </div>
+        </div>
+
+        {/* Advanced Consumption Trend Analysis - New in 3.0 */}
+        <div className="mb-8">
+          <ConsumptionTrendDashboard />
         </div>
 
         {/* Investment Markets Overview - ONLY OWNED ASSETS */}

@@ -3,7 +3,7 @@ import { useAppSelector } from '../../store';
 import { formatVietnameseCurrency } from '../../utils/vietnamCurrency';
 import { toDate } from '../../utils/dateHelpers';
 import ModernCard from '../ui/ModernCard';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import CategorySpendingChart from '../charts/CategorySpendingChart';
 
 // Category colors and icons mapping
 const CATEGORY_CONFIG = {
@@ -127,6 +127,9 @@ const CategorySpendingAnalysis: React.FC = () => {
     };
   }, [transactions]);
 
+  console.log("[x]: ", categoryAnalysis);
+  
+
   if (!categoryAnalysis || !categoryAnalysis.biggestSpender || !categoryAnalysis.mostFrequent || categoryAnalysis.transactionCount === 0) {
     return (
       <ModernCard>
@@ -153,30 +156,12 @@ const CategorySpendingAnalysis: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pie Chart */}
         <div>
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie
-                data={categoryAnalysis.chartData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={100}
-                paddingAngle={2}
-                dataKey="amount"
-              >
-                {categoryAnalysis.chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.config?.color || '#8884d8'} />
-                ))}
-              </Pie>
-              <Tooltip 
-                formatter={(value: number) => [formatVietnameseCurrency(value), 'Chi tiêu']}
-                labelFormatter={(label) => {
-                  const category = categoryAnalysis.chartData.find(c => c.category === label);
-                  return category?.config.name || label;
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+          <CategorySpendingChart 
+            data={categoryAnalysis.chartData.map(item => ({
+              name: item.category === "others_combined" ? "Khác" : item.category,
+              value: item.amount
+            }))}
+          />
         </div>
 
         {/* Category List */}
@@ -193,7 +178,7 @@ const CategorySpendingAnalysis: React.FC = () => {
                   <div>
                     <div className="flex items-center space-x-2">
                       <i className={`${category.config?.icon || 'fas fa-chart-pie'} text-sm text-gray-600`}></i>
-                      <span className="font-medium text-sm">{category.config?.name || category.category}</span>
+                      <span className="font-medium text-sm">{category.category}</span>
                     </div>
                     <div className="text-xs text-gray-500">{category.count} giao dịch</div>
                   </div>

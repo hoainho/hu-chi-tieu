@@ -4,7 +4,7 @@ import { formatVietnameseCurrency } from '../../utils/vietnamCurrency';
 import { toDate } from '../../utils/dateHelpers';
 import ModernCard from '../ui/ModernCard';
 import TrendIndicator from '../ui/TrendIndicator';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import MonthlyComparisonBarChart from '../charts/MonthlyComparisonBarChart';
 
 const MonthlyComparison: React.FC = () => {
   const { transactions } = useAppSelector(state => state.transaction);
@@ -140,27 +140,7 @@ const MonthlyComparison: React.FC = () => {
 
       {/* Comparison Chart */}
       <div className="mb-6">
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={comparisonData.chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-            <XAxis dataKey="name" />
-            <YAxis tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`} />
-            <Tooltip 
-              formatter={(value: number, name: string) => [
-                formatVietnameseCurrency(value), 
-                name
-              ]}
-              contentStyle={{ 
-                backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '12px'
-              }}
-            />
-            <Bar dataKey="Thu nhập" fill="#10B981" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="Chi tiêu" fill="#EF4444" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="Số dư" fill="#6366F1" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <MonthlyComparisonBarChart data={comparisonData.chartData} />
       </div>
 
       {/* Detailed Comparison */}

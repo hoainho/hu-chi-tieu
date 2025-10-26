@@ -22,6 +22,7 @@ import { isFirebaseConfigured, initializeOfflineSupport } from './services/fireb
 import { useAuth } from './hooks/useAuth';
 import Card from './components/ui/Card';
 import ModernDashboard from './components/dashboard/ModernDashboard';
+import ErrorBoundary from './components/error-boundaries/ErrorBoundary';
 
 const FirebaseConfigWarning: React.FC = () => (
     <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
@@ -90,30 +91,32 @@ const App: React.FC = () => {
                 <AuthContext.Provider value={{ user, loading }}>
                     <Toaster position="top-center" reverseOrder={false} />
                     <HashRouter>
-                        {!user ? (
-                            <Routes>
-                                <Route path="/login" element={<Login />} />
-                                <Route path="*" element={<Navigate to="/login" />} />
-                            </Routes>
-                        ) : (
-                            <ReduxUserProvider>
-                                <Layout>
-                                    <Routes>
-                                        <Route path="/dashboard" element={<ModernDashboard />} />
-                                        <Route path="/manage" element={<ManagementPage />} />
-                                        <Route path="/transactions/new" element={<EnhancedTransactionForm />} />
-                                        <Route path="/assets" element={<AssetsPage />} />
-                                        <Route path="/assets/new" element={<EnhancedAssetForm />} />
-                                        <Route path="/investments" element={<InvestmentPage />} />
-                                        <Route path="/envelopes" element={<EnvelopeManager />} />
-                                        <Route path="/spending-sources" element={<SpendingSourceManager />} />
-                                        <Route path="/savings-goals" element={<SavingsGoalsPage />} />
-                                        <Route path="/couple" element={<CouplePage />} />
-                                        <Route path="*" element={<Navigate to="/dashboard" />} />
-                                    </Routes>
-                                </Layout>
-                            </ReduxUserProvider>
-                        )}
+                        <ErrorBoundary>
+                            {!user ? (
+                                <Routes>
+                                    <Route path="/login" element={<Login />} />
+                                    <Route path="*" element={<Navigate to="/login" />} />
+                                </Routes>
+                            ) : (
+                                <ReduxUserProvider>
+                                    <Layout>
+                                        <Routes>
+                                            <Route path="/dashboard" element={<ModernDashboard />} />
+                                            <Route path="/manage" element={<ManagementPage />} />
+                                            <Route path="/transactions/new" element={<EnhancedTransactionForm />} />
+                                            <Route path="/assets" element={<AssetsPage />} />
+                                            <Route path="/assets/new" element={<EnhancedAssetForm />} />
+                                            <Route path="/investments" element={<InvestmentPage />} />
+                                            <Route path="/envelopes" element={<EnvelopeManager />} />
+                                            <Route path="/spending-sources" element={<SpendingSourceManager />} />
+                                            <Route path="/savings-goals" element={<SavingsGoalsPage />} />
+                                            <Route path="/couple" element={<CouplePage />} />
+                                            <Route path="*" element={<Navigate to="/dashboard" />} />
+                                        </Routes>
+                                    </Layout>
+                                </ReduxUserProvider>
+                            )}
+                        </ErrorBoundary>
                     </HashRouter>
                 </AuthContext.Provider>
             </AuthDebugger>

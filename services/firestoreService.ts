@@ -466,17 +466,11 @@ export const getSavingsGoals = async (userId: string): Promise<SavingsGoal[]> =>
     const goalsRef = collection(database, 'savingsGoals');
     const q = query(
       goalsRef,
-      where('ownerId', '==', userId)
+      where('ownerId', '==', userId),
+      orderBy('createdAt', 'desc')
     );
     const snapshot = await getDocs(q);
-    const goals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavingsGoal));
-    
-    // Sort by createdAt on client side to avoid composite index requirement
-    return goals.sort((a, b) => {
-      const aTime = a.createdAt?.toMillis() || 0;
-      const bTime = b.createdAt?.toMillis() || 0;
-      return bTime - aTime; // Descending order (newest first)
-    });
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavingsGoal));
   });
 };
 
@@ -624,16 +618,10 @@ export const getSavingsGoalTransactions = async (goalId: string): Promise<Saving
     const transactionsRef = collection(database, 'savingsGoalTransactions');
     const q = query(
       transactionsRef,
-      where('goalId', '==', goalId)
+      where('goalId', '==', goalId),
+      orderBy('date', 'desc')
     );
     const snapshot = await getDocs(q);
-    const transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavingsGoalTransaction));
-    
-    // Sort by date on client side to avoid composite index requirement
-    return transactions.sort((a, b) => {
-      const aTime = a.date?.toMillis() || 0;
-      const bTime = b.date?.toMillis() || 0;
-      return bTime - aTime; // Descending order (newest first)
-    });
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavingsGoalTransaction));
   });
 };

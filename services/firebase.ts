@@ -9,16 +9,15 @@ import {
 import { getAuth, connectAuthEmulator } from "firebase/auth";
 
 // Your web app's Firebase configuration
-// IMPORTANT: Replace these placeholder values with your own Firebase project's configuration
-// Go to your Firebase project settings > General > Your apps > Firebase SDK snippet > Config
+// IMPORTANT: These values are now read from environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyBoB0wT6P8__yOjMqUyquxrl4kMdqtDWWE",
-  authDomain: "finance-management-34286.firebaseapp.com",
-  projectId: "finance-management-34286",
-  storageBucket: "finance-management-34286.appspot.com",
-  messagingSenderId: "231226585615",
-  appId: "1:231226585615:web:7b5eed14c22c08de00e97a",
-  measurementId: "G-QL8SGJN0K2"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "YOUR_API_KEY",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "your-project.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "your-project-id",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "your-project.appspot.com",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:123456789:web:abc123",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-XXXXXXXXXX"
 };
 
 
@@ -29,7 +28,7 @@ const firebaseConfig = {
 export const isFirebaseConfigured = (): boolean => {
   // Check if all required fields are present and not placeholder values
   return firebaseConfig.apiKey !== "YOUR_API_KEY" && 
-         firebaseConfig.projectId !== "YOUR_PROJECT_ID" &&
+         firebaseConfig.projectId !== "your-project-id" &&
          firebaseConfig.apiKey.length > 0 &&
          firebaseConfig.projectId.length > 0;
 };
