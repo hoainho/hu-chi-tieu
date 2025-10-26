@@ -464,13 +464,19 @@ export const getSavingsGoals = async (userId: string): Promise<SavingsGoal[]> =>
   return handleFirestoreOperation(async () => {
     const database = ensureDb();
     const goalsRef = collection(database, 'savingsGoals');
+    // Remove orderBy to avoid composite index requirement - sort on client-side instead
     const q = query(
       goalsRef,
-      where('ownerId', '==', userId),
-      orderBy('createdAt', 'desc')
+      where('ownerId', '==', userId)
     );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavingsGoal));
+    const goals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavingsGoal));
+    // Client-side sort by createdAt descending
+    return goals.sort((a, b) => {
+      const aTime = a.createdAt?.seconds || 0;
+      const bTime = b.createdAt?.seconds || 0;
+      return bTime - aTime;
+    });
   });
 };
 
@@ -616,12 +622,18 @@ export const getSavingsGoalTransactions = async (goalId: string): Promise<Saving
   return handleFirestoreOperation(async () => {
     const database = ensureDb();
     const transactionsRef = collection(database, 'savingsGoalTransactions');
+    // Remove orderBy to avoid composite index requirement - sort on client-side instead
     const q = query(
       transactionsRef,
-      where('goalId', '==', goalId),
-      orderBy('date', 'desc')
+      where('goalId', '==', goalId)
     );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavingsGoalTransaction));
+    const transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SavingsGoalTransaction));
+    // Client-side sort by date descending
+    return transactions.sort((a, b) => {
+      const aTime = a.date?.seconds || 0;
+      const bTime = b.date?.seconds || 0;
+      return bTime - aTime;
+    });
   });
 };
